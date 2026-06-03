@@ -1,0 +1,3376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="WANIMA ARCHIVE" />
+  <title>WANIMA ARCHIVE</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; background: #f5f2eb; overscroll-behavior: none; }
+    input, textarea, select, button { font-family: inherit; }
+    #root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useRef, useEffect } = React;
+
+// FC content: channels (親) + entries (子)
+// channels: { id, label, icon, color, description }
+// entries:  { id, channelId, title, date, episode, memo, url, images[], groupType }
+//   groupType: "single" | "monthly"  (月まとめ or 単話)
+const SAMPLE_FC_CHANNELS = [
+  { id: "kenta_blog", label: "KENTA's blog",   icon: "✍️", color: "#ff4e1a", description: "KENTAによるブログ" },
+  { id: "radio2",     label: "WANIMAのラジオ2", icon: "📻", color: "#f7c948", description: "ラジオ配信コンテンツ" },
+  { id: "wanikate",   label: "ワニカテ",         icon: "🎬", color: "#4ec9ff", description: "動画コンテンツ" },
+  { id: "nezumi",     label: "ねずみちゃん",     icon: "🐭", color: "#c084fc", description: "ねずみちゃんコンテンツ" },
+];
+const SAMPLE_FC_ENTRIES = [
+  { id: 1, channelId: "kenta_blog", title: "ツアー前日の気持ち", date: "2025-05-30", episode: "", memo: "武道館前夜のブログ。気合い入ってた！ #KENTA #ブログ #武道館", url: "", images: [], groupType: "single" },
+  { id: 2, channelId: "radio2",     title: "#42 新曲について語る回", date: "2025-05-15", episode: "42", memo: "新曲の制作秘話がたっぷり！ #ラジオ2 #新曲", url: "", images: [], groupType: "single" },
+];
+
+
+
+// ── File → base64 helper ─────────────────────────────────────
+function readFileAsDataURL(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.readAsDataURL(file);
+  });
+}
+async function filesToDataURLs(files) {
+  return Promise.all(Array.from(files).map((f) =>
+    readFileAsDataURL(f).then((url) => ({ name: f.name, url }))
+  ));
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+
+const NAV_PAGES = [
+  { id: "sns",     label: "SNS",       icon: "📱" },
+  { id: "live",    label: "ライブ",     icon: "🎸" },
+  { id: "goods",   label: "グッズ",     icon: "🛍" },
+  { id: "media",   label: "メディア出演", icon: "📺" },
+  { id: "members", label: "MEMBERS",   icon: "🎤" },
+];
+
+const SNS_CATEGORIES = [
+  { id: "official_insta", label: "公式 Instagram", icon: "📸", color: "#E1306C", group: "official" },
+  { id: "official_x",     label: "公式 X",          icon: "𝕏",  color: "#e8e8e8", group: "official" },
+  { id: "kenta_insta",    label: "KENTA Instagram", icon: "📸", color: "#F77737", group: "kenta" },
+  { id: "kenta_x",        label: "KENTA X",         icon: "𝕏",  color: "#e8e8e8", group: "kenta" },
+];
+
+const POST_TYPES = [
+  { id: "post",  label: "投稿" },
+  { id: "story", label: "ストーリー" },
+];
+
+const MEMBERS = [
+  { id: "kenta",  name: "KENTA",  role: "Vo / Gt", color: "#ff4e1a", emoji: "🎤" },
+  { id: "fuji",   name: "FUJI",   role: "Ba / Cho", color: "#f7c948", emoji: "🎸" },
+  { id: "kouhei", name: "KOUHEI", role: "Dr / Cho", color: "#4ec9ff", emoji: "🥁" },
+];
+
+const SAMPLE_SNS = [
+  { id: 1, category: "official_insta", type: "post",  memo: "新曲MVのオフショット！ #WANIMA #MV #撮影 #ロック", date: "2025-05-20", url: "https://www.instagram.com/p/example1/", images: [], videos: [] },
+  { id: 2, category: "kenta_x",        type: "post",  memo: "ツアーリハーサル最高だった！ #KENTA #ツアー #リハーサル", date: "2025-05-18", url: "https://x.com/kenta_wanima/status/example2", images: [], videos: [] },
+  { id: 3, category: "official_x",     type: "post",  memo: "ワンマンライブ告知きた！ #WANIMA #ライブ #告知", date: "2025-05-10", url: "", images: [], videos: [] },
+  { id: 4, category: "kenta_insta",    type: "story", memo: "スタジオ風景 #KENTA #スタジオ", date: "2025-05-05", url: "", images: [], videos: [] },
+];
+
+// tours: { id, title, keyvisual[], officialUrl, ticketPrice, goodsImages[], createdAt }
+// shows: { id, tourId, date, venue, place, attended, setlist, seat, memo, images[], videos[] }
+const SAMPLE_TOURS = [
+  {
+    id: 1,
+    title: "WANIMA COMINATCHA!! TOUR 2025",
+    keyvisuals: [],
+    officialUrl: "https://wanima.net/tour/2025",
+    ticketPrice: "¥7,700（スタンディング）",
+    goodsImages: [],
+    createdAt: "2025-04-01",
+  },
+];
+const SAMPLE_SHOWS = [
+  { id: 1, tourId: 1, date: "2025-05-31", venue: "大阪城ホール", place: "大阪", attended: true,  setlist: "Remember / Charm / THANK YOU / Dear... / Gotta Go", seat: "アリーナA-12", memo: "初の大阪城ホール！最高すぎた #WANIMA #大阪城ホール #ライブ", images: [], videos: [] },
+  { id: 2, tourId: 1, date: "2025-06-07", venue: "日本武道館",   place: "東京", attended: false, setlist: "", seat: "", memo: "武道館2days！ #WANIMA #武道館", images: [], videos: [] },
+];
+
+// goodsTours: { id, title, keyvisual, createdAt }
+// goodsItems: { id, tourId, name, category, keyvisual, subImages[], price, date, status, memo, url }
+const SAMPLE_GOODS_TOURS = [
+  { id: 1, title: "COMINATCHA!! TOUR 2025 グッズ", keyvisual: null, createdAt: "2025-05-01" },
+];
+const SAMPLE_GOODS_ITEMS = [
+  { id: 1, tourId: 1, name: "ツアーTシャツ", category: "衣類", keyvisual: null, subImages: [], price: 4400, date: "2025-05-01", status: "所持",  memo: "黒×オレンジ #グッズ #Tシャツ", url: "" },
+  { id: 2, tourId: 1, name: "ロゴキャップ",  category: "小物", keyvisual: null, subImages: [], price: 5500, date: "2025-05-01", status: "欲しい", memo: "黒ベース #グッズ #キャップ",   url: "" },
+];
+
+// mediaTypes: { id, label, icon, color }  ← 親（カスタマイズ可）
+// mediaItems: { id, typeId, title, date, detail, memo, url, images[] }  ← 子
+const SAMPLE_MEDIA_TYPES = [
+  { id: "tv",    label: "TV",    icon: "📺", color: "#ff4e1a" },
+  { id: "radio", label: "ラジオ", icon: "📻", color: "#f7c948" },
+  { id: "mag",   label: "雑誌",  icon: "📖", color: "#4ec9ff" },
+  { id: "web",   label: "Web",   icon: "🌐", color: "#4ec94e" },
+  { id: "other", label: "その他", icon: "🎙", color: "#aaa"    },
+];
+const SAMPLE_MEDIA_ITEMS = [
+  { id: 1, typeId: "tv",    title: "MUSIC STATION",        date: "2025-05-16", detail: "「Remember」生演奏",   memo: "初のMステ！最高だった #WANIMA #Mステ #TV", url: "", images: [] },
+  { id: 2, typeId: "radio", title: "RADIO FISH with WANIMA", date: "2025-04-20", detail: "ゲスト出演・新曲初解禁", memo: "#WANIMA #ラジオ #新曲",                 url: "", images: [] },
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function extractHashtags(text) {
+  return (text || "").match(/#[\w\u3000-\u9fff\uff00-\uffef-]+/g) || [];
+}
+
+// ── Setlist parser ──────────────────────────────────────────
+const SECTION_KEYWORDS = /^(アンコール|encore|en\d*|本編|set\s*\d*|opening|se$)/i;
+function parseSetlist(text) {
+  // Returns array of { type:"header"|"song", text, num }
+  if (!text) return [];
+  const lines = text.split(/[\/\n]/).map(s => s.trim()).filter(Boolean);
+  let songNum = 0;
+  return lines.map(line => {
+    if (SECTION_KEYWORDS.test(line)) {
+      return { type:"header", text:line };
+    }
+    songNum++;
+    return { type:"song", text:line, num:songNum };
+  });
+}
+function parseSetlistSongs(text) {
+  // Returns only song names (no headers)
+  return parseSetlist(text).filter(r => r.type === "song").map(r => r.text);
+}
+
+function getCatInfo(id) { return SNS_CATEGORIES.find((c) => c.id === id) || SNS_CATEGORIES[0]; }
+function getDaysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+function getFirstDayOfMonth(y, m) { return new Date(y, m, 1).getDay(); }
+function isSameDate(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function fmt(n) { return new Intl.NumberFormat("ja-JP").format(n); }
+
+// ═══════════════════════════════════════════════════════════════
+//  ROOT
+// ═══════════════════════════════════════════════════════════════
+
+// ── Storage keys ─────────────────────────────────────────────
+const STORAGE_KEYS = {
+  snsPosts:   "wanima:snsPosts",
+  tours:      "wanima:tours",
+  shows:      "wanima:shows",
+  goodsTours: "wanima:goodsTours",
+  goodsItems: "wanima:goodsItems",
+  mediaTypes: "wanima:mediaTypes",
+  mediaItems: "wanima:mediaItems",
+  fcChannels: "wanima:fcChannels",
+  fcEntries:  "wanima:fcEntries",
+};
+
+function storageGet(key) {
+  try {
+    const val = localStorage.getItem(key);
+    return val ? JSON.parse(val) : null;
+  } catch { return null; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+function App() {
+  const [page, setPage]           = useState("sns");
+  const [sidebarOpen, setSidebar] = useState(true);
+  const [loading, setLoading]     = useState(true);
+
+  // Global data stores
+  const [snsPosts,   setSnsPosts]   = useState(SAMPLE_SNS);
+  const [tours,      setTours]      = useState(SAMPLE_TOURS);
+  const [shows,      setShows]      = useState(SAMPLE_SHOWS);
+  const [goodsTours, setGoodsTours] = useState(SAMPLE_GOODS_TOURS);
+  const [goodsItems, setGoodsItems] = useState(SAMPLE_GOODS_ITEMS);
+  const [mediaTypes, setMediaTypes] = useState(SAMPLE_MEDIA_TYPES);
+  const [mediaItems, setMediaItems] = useState(SAMPLE_MEDIA_ITEMS);
+  const [fcChannels, setFcChannels] = useState(SAMPLE_FC_CHANNELS);
+  const [fcEntries,  setFcEntries]  = useState(SAMPLE_FC_ENTRIES);
+
+  // ── Load from storage on mount ──
+  useEffect(() => {
+    (async () => {
+      const [sp, tr, sh, gt, gi, mt, mi, fc, fe] = await Promise.all([
+        storageGet(STORAGE_KEYS.snsPosts),
+        storageGet(STORAGE_KEYS.tours),
+        storageGet(STORAGE_KEYS.shows),
+        storageGet(STORAGE_KEYS.goodsTours),
+        storageGet(STORAGE_KEYS.goodsItems),
+        storageGet(STORAGE_KEYS.mediaTypes),
+        storageGet(STORAGE_KEYS.mediaItems),
+        storageGet(STORAGE_KEYS.fcChannels),
+        storageGet(STORAGE_KEYS.fcEntries),
+      ]);
+      if (sp) setSnsPosts(sp);
+      if (tr) setTours(tr);
+      if (sh) setShows(sh);
+      if (gt) setGoodsTours(gt);
+      if (gi) setGoodsItems(gi);
+      if (mt) setMediaTypes(mt);
+      if (mi) setMediaItems(mi);
+      if (fc) setFcChannels(fc);
+      if (fe) setFcEntries(fe);
+      setLoading(false);
+    })();
+  }, []);
+
+  // ── Auto-save whenever data changes ──
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.snsPosts,   snsPosts);   }, [snsPosts,   loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.tours,      tours);      }, [tours,      loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.shows,      shows);      }, [shows,      loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.goodsTours, goodsTours); }, [goodsTours, loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.goodsItems, goodsItems); }, [goodsItems, loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.mediaTypes, mediaTypes); }, [mediaTypes, loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.mediaItems, mediaItems); }, [mediaItems, loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.fcChannels,  fcChannels);  }, [fcChannels,  loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.fcEntries,   fcEntries);   }, [fcEntries,   loading]);
+
+  const pageProps = { snsPosts, setSnsPosts, tours, setTours, shows, setShows, goodsTours, setGoodsTours, goodsItems, setGoodsItems, mediaTypes, setMediaTypes, mediaItems, setMediaItems, fcChannels, setFcChannels, fcEntries, setFcEntries };
+
+  if (loading) return (
+    <div style={{ ...S.root, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16, background:"#f5f2eb" }}>
+      <div style={{ fontSize:36 }}>🎸</div>
+      <div style={{ fontSize:14, color:"#888", letterSpacing:"0.1em" }}>LOADING ARCHIVE...</div>
+      <div style={loadingBarStyle} />
+    </div>
+  );
+
+  return (
+    <div style={S.root}>
+      <div style={S.noise} />
+
+      {/* ── Top bar ── */}
+      <header style={S.topbar}>
+        <div style={S.topbarInner}>
+          <button style={S.hamburger} onClick={() => setSidebar((v) => !v)}>
+            <span style={{ ...S.hamLine, transform: sidebarOpen ? "rotate(45deg) translate(5px,5px)" : "none" }} />
+            <span style={{ ...S.hamLine, opacity: sidebarOpen ? 0 : 1 }} />
+            <span style={{ ...S.hamLine, transform: sidebarOpen ? "rotate(-45deg) translate(5px,-5px)" : "none" }} />
+          </button>
+          <div style={S.logo}>
+            <span style={S.logoW}>W</span>
+            <span style={S.logoRest}>ANIMA</span>
+            <span style={S.logoSub}>ARCHIVE</span>
+          </div>
+          <div style={{ marginLeft:"auto", fontSize:10, color:"#999", letterSpacing:"0.06em" }}>
+            💾 自動保存
+          </div>
+        </div>
+      </header>
+
+      <div style={S.body}>
+        {/* ── Sidebar ── */}
+        <aside style={{ ...S.sidebar, width: sidebarOpen ? 220 : 0, minWidth: sidebarOpen ? 220 : 0 }}>
+          <div style={S.sidebarInner}>
+            <div style={S.sideSection}>
+              <div style={S.sideSectionLabel}>ARCHIVE</div>
+              {NAV_PAGES.map((p) => (
+                <button
+                  key={p.id}
+                  style={{ ...S.sideItem, ...(page === p.id ? S.sideItemActive : {}) }}
+                  onClick={() => setPage(p.id)}
+                >
+                  <span style={S.sideIcon}>{p.icon}</span>
+                  <span>{p.label}</span>
+                  {page === p.id && <span style={S.sideActiveDot} />}
+                </button>
+              ))}
+            </div>
+
+            <div style={S.sideFooter}>
+              <div style={S.sideFooterText}>WANIMA FAN ARCHIVE</div>
+              <div style={S.sideFooterSub}>Since 2025</div>
+            </div>
+          </div>
+        </aside>
+
+        {/* ── Main content ── */}
+        <main style={S.main}>
+          {page === "sns"     && <SnsPage     {...pageProps} />}
+          {page === "live"    && <LivePage    {...pageProps} />}
+          {page === "goods"   && <GoodsPage   goodsTours={goodsTours} setGoodsTours={setGoodsTours} goodsItems={goodsItems} setGoodsItems={setGoodsItems} />}
+          {page === "media"   && <MediaPage   mediaTypes={mediaTypes} setMediaTypes={setMediaTypes} mediaItems={mediaItems} setMediaItems={setMediaItems} />}
+          {page === "members" && <MembersPage fcChannels={fcChannels} setFcChannels={setFcChannels} fcEntries={fcEntries} setFcEntries={setFcEntries} />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAGE HEADER
+// ═══════════════════════════════════════════════════════════════
+
+function PageHeader({ icon, title, subtitle, action }) {
+  return (
+    <div style={S.pageHeader}>
+      <div>
+        <div style={S.pageHeaderTop}>
+          <span style={S.pageHeaderIcon}>{icon}</span>
+          <h1 style={S.pageTitle}>{title}</h1>
+        </div>
+        {subtitle && <p style={S.pageSubtitle}>{subtitle}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  SNS PAGE  (ported + improved)
+// ═══════════════════════════════════════════════════════════════
+
+function SnsPage({ snsPosts, setSnsPosts }) {
+  const [subView,    setSubView]    = useState("list"); // list | calendar | add | detail
+  const [selected,   setSelected]   = useState(null);
+  const [searchQ,    setSearchQ]    = useState("");
+  const [filterCat,  setFilterCat]  = useState("all");
+  const [form, setForm] = useState({ category: "official_insta", type: "post", memo: "", date: today(), url: "", images: [], videos: [] });
+  const imgRef = useRef(); const vidRef = useRef();
+
+  const handleAdd = () => {
+    if (!form.memo && !form.url && !form.images.length && !form.videos.length) return;
+    setSnsPosts((p) => [{ id: Date.now(), ...form }, ...p]);
+    setForm({ category: "official_insta", type: "post", memo: "", date: today(), url: "", images: [], videos: [] });
+    setSubView("list");
+  };
+  const handleDelete = (id) => { setSnsPosts((p) => p.filter((x) => x.id !== id)); setSubView("list"); setSelected(null); };
+  const handleFile = async (e, ft) => {
+    const data = await filesToDataURLs(e.target.files);
+    setForm((p) => ({ ...p, [ft]: [...p[ft], ...data] }));
+    e.target.value = "";
+  };
+  const removeFile = (ft, i) => setForm((p) => ({ ...p, [ft]: p[ft].filter((_, j) => j !== i) }));
+
+  const filtered = snsPosts.filter((p) => {
+    const mc = filterCat === "all" || p.category === filterCat;
+    const q = searchQ.toLowerCase();
+    const ms = !q || p.memo.toLowerCase().includes(q) || (p.url||"").toLowerCase().includes(q) || extractHashtags(p.memo).some((t) => t.toLowerCase().includes(q));
+    return mc && ms;
+  });
+  const allTags = [...new Set(snsPosts.flatMap((p) => extractHashtags(p.memo)))];
+
+  return (
+    <div>
+      <PageHeader
+        icon="📱" title="SNS" subtitle="WANIMAメンバーのSNS投稿を管理"
+        action={
+          <div style={{ display: "flex", gap: 8 }}>
+            {["list","calendar"].map((v) => (
+              <button key={v} style={{ ...S.tabBtn, ...(subView === v ? S.tabBtnActive : {}) }} onClick={() => setSubView(v)}>
+                {v === "list" ? "📋 一覧" : "📅 カレンダー"}
+              </button>
+            ))}
+            <button style={S.addBtn} onClick={() => setSubView(subView === "add" ? "list" : "add")}>
+              {subView === "add" ? "✕ キャンセル" : "＋ 追加"}
+            </button>
+          </div>
+        }
+      />
+
+      {subView === "add" && (
+        <SnsAddForm form={form} setForm={setForm} imgRef={imgRef} vidRef={vidRef}
+          handleFile={handleFile} removeFile={removeFile} handleAdd={handleAdd} onCancel={() => setSubView("list")} />
+      )}
+
+      {subView === "detail" && selected && (
+        <SnsDetail post={selected} onBack={() => setSubView("list")} onDelete={handleDelete}
+          onTagClick={(t) => { setSearchQ(t); setSubView("list"); }} />
+      )}
+
+      {subView === "list" && (
+        <SnsListView
+          posts={filtered} allPosts={snsPosts} searchQ={searchQ} setSearchQ={setSearchQ}
+          filterCat={filterCat} setFilterCat={setFilterCat} allTags={allTags}
+          onSelect={(p) => { setSelected(p); setSubView("detail"); }} onDelete={handleDelete}
+        />
+      )}
+
+      {subView === "calendar" && (
+        <SnsCalendar posts={snsPosts} onSelect={(p) => { setSelected(p); setSubView("detail"); }} />
+      )}
+    </div>
+  );
+}
+
+function SnsListView({ posts, allPosts, searchQ, setSearchQ, filterCat, setFilterCat, allTags, onSelect, onDelete }) {
+  return (
+    <div>
+      <div style={S.statsBar}>
+        {SNS_CATEGORIES.map((cat) => (
+          <div key={cat.id} style={S.statItem}>
+            <span style={{ ...S.statDot, background: cat.color }} />
+            <span style={S.statLabel}>{cat.label}</span>
+            <span style={S.statCount}>{allPosts.filter((p) => p.category === cat.id).length}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={S.searchBox}>
+        <span>🔍</span>
+        <input style={S.searchInput} placeholder="#タグ・キーワード・URLで検索..." value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
+        {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+      </div>
+
+      <div style={S.filterRow}>
+        {[{id:"all",label:"ALL"},...SNS_CATEGORIES].map((cat) => (
+          <button key={cat.id} style={{ ...S.chip, ...(filterCat === cat.id ? { ...S.chipActive, borderColor: cat.color||"#ff4e1a", background: (cat.color||"#ff4e1a")+"22" } : {}) }}
+            onClick={() => setFilterCat(cat.id)}>
+            {cat.icon ? `${cat.icon} ` : ""}{cat.label}
+          </button>
+        ))}
+      </div>
+
+      {allTags.length > 0 && (
+        <div style={S.tagRow}>
+          {allTags.slice(0, 14).map((t) => (
+            <button key={t} style={{ ...S.hashChip, ...(searchQ === t ? S.hashChipActive : {}) }}
+              onClick={() => setSearchQ(searchQ === t ? "" : t)}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {posts.length === 0 ? <EmptyState /> : (
+        <div style={S.cardGrid}>
+          {posts.map((p) => <SnsCard key={p.id} post={p} onClick={() => onSelect(p)} onDelete={onDelete} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SnsCard({ post, onClick, onDelete }) {
+  const [confirm, dialog] = useConfirm();
+  const cat = getCatInfo(post.category);
+  const tags = extractHashtags(post.memo);
+  const ptype = POST_TYPES.find((t) => t.id === post.type);
+  return (
+    <div style={S.card} onClick={onClick}>
+      <div style={{ ...S.cardStripe, background: cat.color }} />
+      <div style={S.cardHead}>
+        <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+          <span style={{ ...S.badge, background: cat.color+"22", color: cat.color, borderColor: cat.color+"55" }}>{cat.icon} {cat.label}</span>
+          {ptype && <span style={S.badgeGray}>{ptype.label}</span>}
+        </div>
+        <span style={S.dateTxt}>{post.date}</span>
+      </div>
+      <div style={S.cardMemo}>{post.memo || <span style={{opacity:.4}}>メモなし</span>}</div>
+      {tags.length > 0 && <div style={S.tagWrap}>{tags.map((t) => <span key={t} style={S.tagPill}>{t}</span>)}</div>}
+      {post.url && (
+        <div style={S.cardUrlRow} onClick={(e) => e.stopPropagation()}>
+          <span style={{fontSize:11,opacity:.5}}>🔗</span>
+          <a href={post.url} target="_blank" rel="noopener noreferrer" style={S.urlTxt}>{post.url.slice(0,42)}{post.url.length>42?"…":""}</a>
+        </div>
+      )}
+      <div style={S.cardFoot}>
+        <div style={{display:"flex",gap:5}}>
+          {post.images.length>0 && <span style={S.mediaBadge}>🖼 {post.images.length}</span>}
+          {post.videos.length>0 && <span style={S.mediaBadge}>🎬 {post.videos.length}</span>}
+        </div>
+        {dialog}
+        <button style={S.delBtn} onClick={(e)=>{e.stopPropagation();confirm("この投稿を削除しますか？",()=>onDelete(post.id));}}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
+function SnsDetail({ post, onBack, onDelete, onTagClick, onUpdate }) {
+  const [confirm, dialog] = useConfirm();
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ ...post });
+  const editImgRef = useRef(); const editVidRef = useRef();
+  const handleEditFile = async (e, ft) => {
+    const d = await filesToDataURLs(e.target.files);
+    setEditForm((p) => ({ ...p, [ft]: [...p[ft], ...d] }));
+    e.target.value = "";
+  };
+  const removeEditFile = (ft, i) => setEditForm((p) => ({ ...p, [ft]: p[ft].filter((_,j)=>j!==i) }));
+  const saveEdit = () => { onUpdate(editForm); setEditing(false); };
+  const cat = getCatInfo(post.category);
+  const tags = extractHashtags(post.memo);
+  return (
+    <div style={S.detailWrap}>
+      <button style={S.backBtn} onClick={onBack}>← 戻る</button>
+      <div style={S.detailCard}>
+        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px" , background: cat.color }} />
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+          <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"55" }}>{cat.icon} {cat.label}</span>
+          {POST_TYPES.find((t)=>t.id===post.type) && <span style={S.badgeGray}>{POST_TYPES.find((t)=>t.id===post.type).label}</span>}
+          <span style={{ ...S.dateTxt, marginLeft:"auto" }}>{post.date}</span>
+          <button style={LS.editBtn} onClick={() => setEditing((v)=>!v)}>{editing?"✕ キャンセル":"✏️ 編集"}</button>
+        </div>
+        {editing ? (
+          <div style={{ marginBottom:16 }}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>カテゴリ</label>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                {SNS_CATEGORIES.map((cat)=>(
+                  <button key={cat.id} style={{ ...S.catBtn, ...(editForm.category===cat.id?{ borderColor:cat.color, background:cat.color+"22", color:cat.color }:{}) }}
+                    onClick={()=>setEditForm((p)=>({...p,category:cat.id}))}>{cat.icon} {cat.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={S.formGrid2}>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>投稿タイプ</label>
+                <div style={{display:"flex",gap:8}}>
+                  {POST_TYPES.map((t)=><button key={t.id} style={{...S.typeBtn,...(editForm.type===t.id?S.typeBtnActive:{})}} onClick={()=>setEditForm((p)=>({...p,type:t.id}))}>{t.label}</button>)}
+                </div>
+              </div>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>日付</label>
+                <input type="date" style={S.inputBase} value={editForm.date} onChange={(e)=>setEditForm((p)=>({...p,date:e.target.value}))} />
+              </div>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>🔗 URL</label>
+              <input type="url" style={S.inputBase} value={editForm.url||""} onChange={(e)=>setEditForm((p)=>({...p,url:e.target.value}))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>メモ</label>
+              <textarea style={S.textarea} rows={3} value={editForm.memo} onChange={(e)=>setEditForm((p)=>({...p,memo:e.target.value}))} />
+            </div>
+            <FileUploadRow label="画像" accept="image/*" inputRef={editImgRef} files={editForm.images} onUpload={(e)=>handleEditFile(e,"images")} onRemove={(i)=>removeEditFile("images",i)} icon="📷" isImage />
+            <FileUploadRow label="動画" accept="video/*" inputRef={editVidRef} files={editForm.videos} onUpload={(e)=>handleEditFile(e,"videos")} onRemove={(i)=>removeEditFile("videos",i)} icon="🎬" />
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button style={S.cancelBtn} onClick={()=>setEditing(false)}>キャンセル</button>
+              <button style={S.saveBtn} onClick={saveEdit}>保存する ✓</button>
+            </div>
+          </div>
+        ) : (
+        <div style={{ fontSize:15, lineHeight:1.8, marginBottom:12, whiteSpace:"pre-wrap", color:"#333" }}>{post.memo||<span style={{opacity:.4}}>メモなし</span>}</div>
+        )}
+        {tags.length>0 && <div style={S.tagWrap}>{tags.map((t)=><button key={t} style={{...S.tagPill,cursor:"pointer",border:"none"}} onClick={()=>onTagClick(t)}>{t}</button>)}</div>}
+        {post.url && (
+          <div style={S.detailUrlBox}>
+            <div style={S.sectionTitle}>🔗 リンク</div>
+            <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:"#7ec8ff", textDecoration:"none", wordBreak:"break-all", lineHeight:1.5, display:"block", marginBottom:8 }}>{post.url}</a>
+            <button style={S.copyBtn} onClick={()=>navigator.clipboard.writeText(post.url)}>📋 コピー</button>
+          </div>
+        )}
+        {post.images.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>📷 画像</div><div style={S.mediaGrid}>{post.images.map((img,i)=><img key={i} src={img.url} alt={img.name} style={S.thumb}/>)}</div></div>)}
+        {post.videos.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>🎬 動画</div><div style={S.mediaGrid}>{post.videos.map((v,i)=><video key={i} src={v.url} controls style={S.thumb}/>)}</div></div>)}
+        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
+          {dialog}
+          <button style={S.dangerBtn} onClick={()=>confirm("この投稿を削除しますか？",()=>onDelete(post.id))}>🗑 削除する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SnsAddForm({ form, setForm, imgRef, vidRef, handleFile, removeFile, handleAdd, onCancel }) {
+  const isValid = form.memo || form.url || form.images.length || form.videos.length;
+  return (
+    <div style={{ ...S.formCard, marginBottom:24 }}>
+      <div style={S.formGrid2}>
+        <div style={S.fieldGroup}>
+          <label style={S.fieldLabel}>カテゴリ</label>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+            {SNS_CATEGORIES.map((cat)=>(
+              <button key={cat.id} style={{ ...S.catBtn, ...(form.category===cat.id ? { borderColor:cat.color, background:cat.color+"22", color:cat.color } : {}) }}
+                onClick={()=>setForm((p)=>({...p,category:cat.id}))}>{cat.icon} {cat.label}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>投稿タイプ</label>
+            <div style={{ display:"flex", gap:8 }}>
+              {POST_TYPES.map((t)=><button key={t.id} style={{ ...S.typeBtn, ...(form.type===t.id?S.typeBtnActive:{}) }} onClick={()=>setForm((p)=>({...p,type:t.id}))}>{t.label}</button>)}
+            </div>
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>投稿日</label>
+            <input type="date" style={S.inputBase} value={form.date} onChange={(e)=>setForm((p)=>({...p,date:e.target.value}))} />
+          </div>
+        </div>
+      </div>
+      <div style={S.fieldGroup}>
+        <label style={S.fieldLabel}>🔗 投稿URL</label>
+        <input type="url" style={S.inputBase} placeholder="https://..." value={form.url} onChange={(e)=>setForm((p)=>({...p,url:e.target.value}))} />
+      </div>
+      <div style={S.fieldGroup}>
+        <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+        <textarea style={S.textarea} rows={3} placeholder="#WANIMA #KENTA..." value={form.memo} onChange={(e)=>setForm((p)=>({...p,memo:e.target.value}))} />
+        {extractHashtags(form.memo).length>0 && <div style={{...S.tagWrap,marginTop:6}}>{extractHashtags(form.memo).map((t)=><span key={t} style={S.tagPill}>{t}</span>)}</div>}
+      </div>
+      <FileUploadRow label="画像" accept="image/*" inputRef={imgRef} files={form.images} onUpload={(e)=>handleFile(e,"images")} onRemove={(i)=>removeFile("images",i)} icon="📷" isImage />
+      <FileUploadRow label="動画" accept="video/*" inputRef={vidRef} files={form.videos} onUpload={(e)=>handleFile(e,"videos")} onRemove={(i)=>removeFile("videos",i)} icon="🎬" />
+      <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+        <button style={S.cancelBtn} onClick={onCancel}>キャンセル</button>
+        <button style={{ ...S.saveBtn, ...(isValid?{}:S.saveBtnOff) }} disabled={!isValid} onClick={handleAdd}>保存する ✓</button>
+      </div>
+    </div>
+  );
+}
+
+function SnsCalendar({ posts, onSelect }) {
+  const today = new Date();
+  const [y, setY] = useState(today.getFullYear());
+  const [m, setM] = useState(today.getMonth());
+  const [selDay, setSelDay] = useState(null);
+  const daysInMonth = getDaysInMonth(y, m);
+  const firstDay = getFirstDayOfMonth(y, m);
+  const byDate = {};
+  posts.forEach((p) => { if (!byDate[p.date]) byDate[p.date] = []; byDate[p.date].push(p); });
+  const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+  const WD = ["日","月","火","水","木","金","土"];
+  const cells = [...Array(firstDay).fill(null), ...Array.from({length:daysInMonth},(_,i)=>i+1)];
+  const selStr = selDay ? `${y}-${String(m+1).padStart(2,"0")}-${String(selDay).padStart(2,"0")}` : null;
+  const selPosts = selStr ? (byDate[selStr]||[]) : [];
+  return (
+    <div>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:20, marginBottom:18 }}>
+        <button style={S.calNavBtn} onClick={()=>{ if(m===0){setY(v=>v-1);setM(11);}else setM(v=>v-1); setSelDay(null); }}>‹</button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:13, color:"#666", fontWeight:600 }}>{y}</div>
+          <div style={{ fontSize:24, fontWeight:800, color:"#1a1a1a" }}>{MONTHS[m]}</div>
+        </div>
+        <button style={S.calNavBtn} onClick={()=>{ if(m===11){setY(v=>v+1);setM(0);}else setM(v=>v+1); setSelDay(null); }}>›</button>
+      </div>
+      <div style={S.calGrid}>
+        {WD.map((w,i)=><div key={w} style={{ ...S.calWD, color: i===0?"#b71c1c":i===6?"#1565c0":"#aaa" }}>{w}</div>)}
+        {cells.map((d, idx) => {
+          if (!d) return <div key={`e${idx}`}/>;
+          const ds = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const dp = byDate[ds]||[];
+          const isT = isSameDate(new Date(y,m,d), today);
+          const isSel = selDay===d;
+          const dots = [...new Set(dp.map((p)=>getCatInfo(p.category).color))].slice(0,4);
+          return (
+            <div key={d} style={{ ...S.calCell, ...(isSel?S.calCellSel:{}), ...(isT&&!isSel?S.calCellToday:{}), cursor: dp.length?"pointer":"default" }}
+              onClick={()=>dp.length&&setSelDay(isSel?null:d)}>
+              <span style={{ fontSize:13, fontWeight: isT?800:400, color: idx%7===0?"#b71c1c":idx%7===6?"#1565c0":"#1a1a1a" }}>{d}</span>
+              <div style={{ display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center" }}>
+                {dots.map((c,i)=><span key={i} style={{ width:5,height:5,borderRadius:"50%",background:c,display:"block" }}/>)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {selDay && selPosts.length>0 && (
+        <div style={S.calPanel}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
+            <span style={{ fontWeight:800, fontSize:15 }}>{y}年{m+1}月{selDay}日</span>
+            <span style={{ fontSize:12, color:"#666" }}>{selPosts.length}件</span>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {selPosts.map((p)=>{
+              const cat = getCatInfo(p.category);
+              return (
+                <div key={p.id} style={{ ...S.calPostRow, borderLeftColor:cat.color }} onClick={()=>onSelect(p)}>
+                  <div style={{ display:"flex", gap:5, marginBottom:5, flexWrap:"wrap" }}>
+                    <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"55" }}>{cat.icon} {cat.label}</span>
+                    <span style={S.badgeGray}>{POST_TYPES.find((t)=>t.id===p.type)?.label}</span>
+                  </div>
+                  <div style={{ fontSize:13, color:"#1a1a1a", lineHeight:1.5 }}>{p.memo||<span style={{opacity:.4}}>メモなし</span>}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LIVE PAGE  — ツアー（親）→ 公演（子）の2層構造
+// ═══════════════════════════════════════════════════════════════
+
+function LivePage({ tours, setTours, shows, setShows }) {
+  // layer: "tours" | "tour_detail" | "show_detail"
+  const [layer,        setLayer]        = useState("tours"); // "tours"|"tour_detail"|"show_detail"|"stats"
+  const [activeTour,   setActiveTour]   = useState(null);
+  const [activeShow,   setActiveShow]   = useState(null);
+  const [showForm,     setShowForm]     = useState("none"); // "none"|"tour"|"show"|"edit_tour"
+  const [confirm, dialog] = useConfirm();
+  const [searchQ,      setSearchQ]      = useState("");
+
+  // ── Tour form state ──
+  const [tourForm, setTourForm] = useState({
+    title:"", keyvisuals:[], officialUrl:"", ticketPrice:"", goodsImages:[],
+  });
+  const tourKVRef  = useRef();
+  const tourGoodsRef = useRef();
+
+  // ── Tour edit form state ──
+  const [editTourForm, setEditTourForm] = useState(null);
+  const editKVRef    = useRef();
+  const editGoodsRef = useRef();
+
+  // ── Show form state ──
+  const [showFormData, setShowFormData] = useState({
+    date:today(), venue:"", place:"", attended:true,
+    setlist:"", seat:"", memo:"", images:[], videos:[],
+  });
+  const showImgRef = useRef();
+  const showVidRef = useRef();
+
+  // ── Handlers: Tour ──
+  const addTour = () => {
+    if (!tourForm.title) return;
+    setTours((p) => [{ id:Date.now(), createdAt:today(), ...tourForm }, ...p]);
+    setTourForm({ title:"", keyvisuals:[], officialUrl:"", ticketPrice:"", goodsImages:[] });
+    setShowForm("none");
+  };
+  const deleteTour = (id) => {
+    setTours((p) => p.filter((t) => t.id !== id));
+    setShows((p) => p.filter((s) => s.tourId !== id));
+    setLayer("tours"); setActiveTour(null);
+  };
+  const saveTourEdit = () => {
+    if (!editTourForm.title) return;
+    setTours((p) => p.map((t) => t.id === editTourForm.id ? { ...editTourForm } : t));
+    setActiveTour(editTourForm); // reflect in detail view instantly
+    setShowForm("none");
+    setEditTourForm(null);
+  };
+  const handleTourFile = async (e, field) => {
+    const d = await filesToDataURLs(e.target.files);
+    setTourForm((p) => ({ ...p, [field]: [...p[field], ...d] }));
+    e.target.value = "";
+  };
+  const removeTourFile = (field, i) => setTourForm((p) => ({ ...p, [field]: p[field].filter((_,j)=>j!==i) }));
+  const handleEditTourFile = async (e, field) => {
+    const d = await filesToDataURLs(e.target.files);
+    setEditTourForm((p) => ({ ...p, [field]: [...p[field], ...d] }));
+    e.target.value = "";
+  };
+  const removeEditTourFile = (field, i) => setEditTourForm((p) => ({ ...p, [field]: p[field].filter((_,j)=>j!==i) }));
+
+  // ── Handlers: Show ──
+  const addShow = () => {
+    if (!showFormData.venue) return;
+    setShows((p) => [{ id:Date.now(), tourId:activeTour.id, ...showFormData }, ...p]);
+    setShowFormData({ date:today(), venue:"", place:"", attended:true, setlist:"", seat:"", memo:"", images:[], videos:[] });
+    setShowForm("none");
+  };
+  const deleteShow = (id) => {
+    setShows((p) => p.filter((s) => s.id !== id));
+    setLayer("tour_detail"); setActiveShow(null);
+  };
+  const handleShowFile = async (e, ft) => {
+    const d = await filesToDataURLs(e.target.files);
+    setShowFormData((p) => ({ ...p, [ft]: [...p[ft], ...d] }));
+    e.target.value = "";
+  };
+  const removeShowFile = (ft, i) => setShowFormData((p) => ({ ...p, [ft]: p[ft].filter((_,j)=>j!==i) }));
+
+  const tourShows = (t) => shows.filter((s) => s.tourId === t.id).sort((a,b) => a.date.localeCompare(b.date));
+  const attendedShows = (t) => tourShows(t).filter((s) => s.attended);
+
+  // ── Search filter for shows ──
+  const filteredShows = activeTour
+    ? tourShows(activeTour).filter((s) => {
+        const q = searchQ.toLowerCase();
+        return !q || s.venue.toLowerCase().includes(q) || s.memo.toLowerCase().includes(q) ||
+          s.setlist.toLowerCase().includes(q) || extractHashtags(s.memo).some((t) => t.toLowerCase().includes(q));
+      })
+    : [];
+  const allShowTags = activeTour
+    ? [...new Set(tourShows(activeTour).flatMap((s) => extractHashtags(s.memo)))]
+    : [];
+
+  // ════════════════════════════════
+  //  LAYER: ツアー一覧
+  // ════════════════════════════════
+  if (layer === "tours") return (
+    <div>
+      {dialog}
+      <PageHeader icon="🎸" title="ライブ" subtitle="ツアー→公演の2層で管理"
+        action={
+          <div style={{ display:"flex", gap:8 }}>
+            <button style={{ ...S.tabBtn, ...(layer==="stats" ? S.tabBtnActive : {}) }}
+              onClick={() => { setLayer(layer==="stats"?"tours":"stats"); setShowForm("none"); }}>
+              📊 統計
+            </button>
+            <button style={S.addBtn} onClick={() => setShowForm(showForm==="tour"?"none":"tour")}>
+              {showForm==="tour" ? "✕ キャンセル" : "＋ ツアーを追加"}
+            </button>
+          </div>
+        }
+      />
+
+      {/* ── Tour add form ── */}
+      {showForm==="tour" && (
+        <div style={{ ...S.formCard, marginBottom:24 }}>
+          <div style={LS.formSectionLabel}>① ツアー情報</div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>ツアータイトル *</label>
+            <input style={S.inputBase} placeholder="WANIMA ○○ TOUR 20XX" value={tourForm.title}
+              onChange={(e) => setTourForm((p) => ({ ...p, title:e.target.value }))} />
+          </div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>🔗 ツアー公式URL</label>
+              <input type="url" style={S.inputBase} placeholder="https://wanima.net/tour/..."
+                value={tourForm.officialUrl} onChange={(e) => setTourForm((p) => ({ ...p, officialUrl:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>チケット料金</label>
+              <input style={S.inputBase} placeholder="¥7,700（スタンディング）"
+                value={tourForm.ticketPrice} onChange={(e) => setTourForm((p) => ({ ...p, ticketPrice:e.target.value }))} />
+            </div>
+          </div>
+
+          {/* Keyvisual upload */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🖼 キービジュアル</label>
+            <input type="file" accept="image/*" multiple ref={tourKVRef} style={{ display:"none" }}
+              onChange={(e) => handleTourFile(e, "keyvisuals")} />
+            <button style={S.uploadBtn} onClick={() => tourKVRef.current.click()}>📷 画像をアップロード</button>
+            {tourForm.keyvisuals.length > 0 && (
+              <div style={LS.imagePreviewRow}>
+                {tourForm.keyvisuals.map((img, i) => (
+                  <div key={i} style={LS.previewWrap}>
+                    <img src={img.url} alt="" style={LS.previewImg} />
+                    <button style={S.removeBtn} onClick={() => removeTourFile("keyvisuals", i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Goods images */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🛍 グッズ画像</label>
+            <input type="file" accept="image/*" multiple ref={tourGoodsRef} style={{ display:"none" }}
+              onChange={(e) => handleTourFile(e, "goodsImages")} />
+            <button style={S.uploadBtn} onClick={() => tourGoodsRef.current.click()}>📷 グッズ画像をアップロード</button>
+            {tourForm.goodsImages.length > 0 && (
+              <div style={LS.imagePreviewRow}>
+                {tourForm.goodsImages.map((img, i) => (
+                  <div key={i} style={LS.previewWrap}>
+                    <img src={img.url} alt="" style={LS.previewImg} />
+                    <button style={S.removeBtn} onClick={() => removeTourFile("goodsImages", i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!tourForm.title ? S.saveBtnOff : {}) }} onClick={addTour}>
+              ツアーを作成 ✓
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tour cards ── */}
+      {tours.length === 0 ? <EmptyState /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {tours.map((tour) => {
+            const ts = tourShows(tour);
+            const att = attendedShows(tour);
+            return (
+              <div key={tour.id} style={LS.tourCard} onClick={() => { setActiveTour(tour); setLayer("tour_detail"); setSearchQ(""); }}>
+                {/* KV strip */}
+                {tour.keyvisuals.length > 0 && (
+                  <div style={LS.tourKVStrip}>
+                    <img src={tour.keyvisuals[0].url} alt="" style={LS.tourKVImg} />
+                    <div style={LS.tourKVOverlay} />
+                  </div>
+                )}
+                <div style={{ padding:"16px 18px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10, flexWrap:"wrap" }}>
+                    <div>
+                      <div style={{ fontWeight:900, fontSize:16, color:"#1a1a1a", letterSpacing:"0.03em", marginBottom:6 }}>{tour.title}</div>
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                        {tour.ticketPrice && <span style={S.infoBadge}>🎟 {tour.ticketPrice}</span>}
+                        {tour.officialUrl && <span style={S.infoBadge}>🔗 公式サイトあり</span>}
+                      </div>
+                    </div>
+                    <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); confirm("このツアーを削除しますか？\n公演データも全て削除されます。",()=>deleteTour(tour.id)); }}>🗑</button>
+                  </div>
+                  <div style={LS.tourStats}>
+                    <div style={LS.tourStatItem}>
+                      <span style={LS.tourStatNum}>{ts.length}</span>
+                      <span style={LS.tourStatLabel}>公演</span>
+                    </div>
+                    <div style={LS.tourStatDivider} />
+                    <div style={LS.tourStatItem}>
+                      <span style={{ ...LS.tourStatNum, color:"#4ec94e" }}>{att.length}</span>
+                      <span style={LS.tourStatLabel}>参加</span>
+                    </div>
+                    <div style={LS.tourStatDivider} />
+                    <div style={LS.tourStatItem}>
+                      <span style={{ ...LS.tourStatNum, color:"#777" }}>{ts.length - att.length}</span>
+                      <span style={LS.tourStatLabel}>未参加</span>
+                    </div>
+                    {tour.goodsImages.length > 0 && (
+                      <>
+                        <div style={LS.tourStatDivider} />
+                        <div style={LS.tourStatItem}>
+                          <span style={LS.tourStatNum}>🛍 {tour.goodsImages.length}</span>
+                          <span style={LS.tourStatLabel}>グッズ画像</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* upcoming shows preview */}
+                  {ts.length > 0 && (
+                    <div style={{ marginTop:10, display:"flex", flexDirection:"column", gap:4 }}>
+                      {ts.slice(0,3).map((s) => (
+                        <div key={s.id} style={LS.showPreviewRow}>
+                          <span style={{ ...LS.attendDot, background: s.attended ? "#4ec94e" : "#aaa" }} />
+                          <span style={{ fontSize:11, color:"#555", minWidth:84 }}>{s.date}</span>
+                          <span style={{ fontSize:12, color:"#333", fontWeight:600 }}>{s.venue}</span>
+                          <span style={{ fontSize:11, color:"#777", marginLeft:4 }}>{s.place}</span>
+                        </div>
+                      ))}
+                      {ts.length > 3 && <div style={{ fontSize:11, color:"#888", paddingLeft:12 }}>他 {ts.length-3} 公演…</div>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════════
+  //  LAYER: ツアー詳細（公演一覧）
+  // ════════════════════════════════
+  if (layer === "tour_detail" && activeTour) return (
+    <div>
+      {dialog}
+      {/* Breadcrumb */}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tours"); setActiveTour(null); setShowForm("none"); setSearchQ(""); }}>
+          🎸 ライブ
+        </button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeTour.title}</span>
+      </div>
+
+      {/* Tour header card */}
+      <div style={LS.tourDetailHeader}>
+        {activeTour.keyvisuals.length > 0 && (
+          <div style={LS.tourDetailKV}>
+            {activeTour.keyvisuals.map((img, i) => (
+              <img key={i} src={img.url} alt="" style={LS.tourDetailKVImg} />
+            ))}
+          </div>
+        )}
+        <div style={{ padding:"18px 20px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+            <h2 style={{ fontSize:20, fontWeight:900, margin:"0 0 10px", color:"#1a1a1a", letterSpacing:"0.04em" }}>{activeTour.title}</h2>
+            <button
+              style={LS.editBtn}
+              onClick={() => {
+                setEditTourForm({ ...activeTour });
+                setShowForm(showForm === "edit_tour" ? "none" : "edit_tour");
+              }}
+            >
+              {showForm === "edit_tour" ? "✕" : "✏️ 編集"}
+            </button>
+          </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+            {activeTour.ticketPrice && <span style={S.infoBadge}>🎟 {activeTour.ticketPrice}</span>}
+            {activeTour.officialUrl && (
+              <a href={activeTour.officialUrl} target="_blank" rel="noopener noreferrer"
+                style={{ ...S.infoBadge, color:"#7ec8ff", textDecoration:"none" }} onClick={(e)=>e.stopPropagation()}>
+                🔗 公式サイト
+              </a>
+            )}
+          </div>
+
+          {/* Goods images */}
+          {activeTour.goodsImages.length > 0 && (
+            <div style={{ marginTop:4 }}>
+              <div style={S.sectionTitle}>🛍 グッズ</div>
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginTop:6 }}>
+                {activeTour.goodsImages.map((img, i) => (
+                  <img key={i} src={img.url} alt="" style={{ width:80, height:60, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.1)" }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={LS.tourStats}>
+            <div style={LS.tourStatItem}>
+              <span style={LS.tourStatNum}>{tourShows(activeTour).length}</span>
+              <span style={LS.tourStatLabel}>公演</span>
+            </div>
+            <div style={LS.tourStatDivider} />
+            <div style={LS.tourStatItem}>
+              <span style={{ ...LS.tourStatNum, color:"#4ec94e" }}>{attendedShows(activeTour).length}</span>
+              <span style={LS.tourStatLabel}>参加</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tour edit form ── */}
+      {showForm === "edit_tour" && editTourForm && (
+        <div style={{ ...S.formCard, marginBottom:20 }}>
+          <div style={LS.formSectionLabel}>✏️ ツアー情報を編集</div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>ツアータイトル *</label>
+            <input style={S.inputBase} value={editTourForm.title}
+              onChange={(e) => setEditTourForm((p) => ({ ...p, title:e.target.value }))} />
+          </div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>🔗 ツアー公式URL</label>
+              <input type="url" style={S.inputBase} placeholder="https://wanima.net/tour/..."
+                value={editTourForm.officialUrl}
+                onChange={(e) => setEditTourForm((p) => ({ ...p, officialUrl:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>チケット料金</label>
+              <input style={S.inputBase} placeholder="¥7,700（スタンディング）"
+                value={editTourForm.ticketPrice}
+                onChange={(e) => setEditTourForm((p) => ({ ...p, ticketPrice:e.target.value }))} />
+            </div>
+          </div>
+
+          {/* Edit keyvisuals */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🖼 キービジュアル</label>
+            <input type="file" accept="image/*" multiple ref={editKVRef} style={{ display:"none" }}
+              onChange={(e) => handleEditTourFile(e, "keyvisuals")} />
+            <button style={S.uploadBtn} onClick={() => editKVRef.current.click()}>📷 画像を追加</button>
+            {editTourForm.keyvisuals.length > 0 && (
+              <div style={LS.imagePreviewRow}>
+                {editTourForm.keyvisuals.map((img, i) => (
+                  <div key={i} style={LS.previewWrap}>
+                    <img src={img.url} alt="" style={LS.previewImg} />
+                    <button style={S.removeBtn} onClick={() => removeEditTourFile("keyvisuals", i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Edit goods images */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🛍 グッズ画像</label>
+            <input type="file" accept="image/*" multiple ref={editGoodsRef} style={{ display:"none" }}
+              onChange={(e) => handleEditTourFile(e, "goodsImages")} />
+            <button style={S.uploadBtn} onClick={() => editGoodsRef.current.click()}>📷 グッズ画像を追加</button>
+            {editTourForm.goodsImages.length > 0 && (
+              <div style={LS.imagePreviewRow}>
+                {editTourForm.goodsImages.map((img, i) => (
+                  <div key={i} style={LS.previewWrap}>
+                    <img src={img.url} alt="" style={LS.previewImg} />
+                    <button style={S.removeBtn} onClick={() => removeEditTourFile("goodsImages", i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => { setShowForm("none"); setEditTourForm(null); }}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!editTourForm.title ? S.saveBtnOff : {}) }} onClick={saveTourEdit}>
+              保存する ✓
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Show add button + search */}
+      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:14, flexWrap:"wrap" }}>
+        <div style={{ ...S.searchBox, flex:1, marginBottom:0 }}>
+          <span>🔍</span>
+          <input style={S.searchInput} placeholder="会場・セトリ・#タグで検索..." value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)} />
+          {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+        </div>
+        <button style={S.addBtn} onClick={() => setShowForm(showForm==="show"?"none":"show")}>
+          {showForm==="show" ? "✕ キャンセル" : "＋ 公演を追加"}
+        </button>
+      </div>
+
+      {/* hashtag quick filters */}
+      {allShowTags.length > 0 && (
+        <div style={{ ...S.tagRow, marginBottom:14 }}>
+          {allShowTags.slice(0,12).map((t) => (
+            <button key={t} style={{ ...S.hashChip, ...(searchQ===t ? S.hashChipActive : {}) }}
+              onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Show add form ── */}
+      {showForm==="show" && (
+        <div style={{ ...S.formCard, marginBottom:20 }}>
+          <div style={LS.formSectionLabel}>② 公演情報</div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>公演日 *</label>
+              <input type="date" style={S.inputBase} value={showFormData.date}
+                onChange={(e) => setShowFormData((p) => ({ ...p, date:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>会場 *</label>
+              <input style={S.inputBase} placeholder="日本武道館" value={showFormData.venue}
+                onChange={(e) => setShowFormData((p) => ({ ...p, venue:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>開催地</label>
+              <input style={S.inputBase} placeholder="東京" value={showFormData.place}
+                onChange={(e) => setShowFormData((p) => ({ ...p, place:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>参加 / 未参加</label>
+              <div style={{ display:"flex", gap:8 }}>
+                {[{v:true,l:"✅ 参加した"},{v:false,l:"⬜ 参加しなかった"}].map((o) => (
+                  <button key={String(o.v)}
+                    style={{ ...S.typeBtn, ...(showFormData.attended===o.v ? { borderColor: o.v?"#4ec94e":"#888", background: o.v?"rgba(78,201,78,.15)":"rgba(255,255,255,.06)", color: o.v?"#4ec94e":"#444" } : {}) }}
+                    onClick={() => setShowFormData((p) => ({ ...p, attended:o.v }))}
+                  >{o.l}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {showFormData.attended && (
+            <>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>🎫 座席・チケット情報</label>
+                <input style={S.inputBase} placeholder="アリーナ A-12列 / スタンド 3塁側 C-88" value={showFormData.seat}
+                  onChange={(e) => setShowFormData((p) => ({ ...p, seat:e.target.value }))} />
+              </div>
+            </>
+          )}
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🎵 セットリスト <span style={{opacity:.5,fontSize:11}}>（参加・未参加問わず記録できます）</span></label>
+            <textarea style={S.textarea} rows={5}
+              placeholder={"1曲ずつ改行 or スラッシュ区切り\nRemember / Charm / THANK YOU\nまたは\nRemember\nCharm\nTHANK YOU"}
+              value={showFormData.setlist} onChange={(e) => setShowFormData((p) => ({ ...p, setlist:e.target.value }))} />
+          </div>
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+            <textarea style={S.textarea} rows={3} value={showFormData.memo}
+              onChange={(e) => setShowFormData((p) => ({ ...p, memo:e.target.value }))} />
+            {extractHashtags(showFormData.memo).length > 0 && (
+              <div style={{ ...S.tagWrap, marginTop:6 }}>
+                {extractHashtags(showFormData.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+              </div>
+            )}
+          </div>
+
+          <FileUploadRow label="画像" accept="image/*" inputRef={showImgRef} files={showFormData.images}
+            onUpload={(e) => handleShowFile(e,"images")} onRemove={(i) => removeShowFile("images",i)} icon="📷" isImage />
+          <FileUploadRow label="動画" accept="video/*" inputRef={showVidRef} files={showFormData.videos}
+            onUpload={(e) => handleShowFile(e,"videos")} onRemove={(i) => removeShowFile("videos",i)} icon="🎬" />
+
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!showFormData.venue ? S.saveBtnOff : {}) }} onClick={addShow}>
+              公演を追加 ✓
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Show list ── */}
+      {filteredShows.length === 0 && showForm !== "show" ? <EmptyState /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {filteredShows.map((show) => (
+            <div key={show.id} style={{ ...LS.showCard, ...(show.attended ? LS.showCardAttended : LS.showCardAbsent) }}
+              onClick={() => { setActiveShow(show); setLayer("show_detail"); }}>
+              <div style={LS.showCardLeft}>
+                <div style={{ ...LS.attendPill, background: show.attended ? "rgba(78,201,78,.15)" : "rgba(255,255,255,.05)", color: show.attended ? "#4ec94e" : "#888", border: `1px solid ${show.attended ? "rgba(78,201,78,.3)" : "rgba(255,255,255,.1)"}` }}>
+                  {show.attended ? "✅ 参加" : "⬜ 未参加"}
+                </div>
+                <div style={LS.showDate}>{show.date}</div>
+              </div>
+              <div style={LS.showCardBody}>
+                <div style={{ fontWeight:800, fontSize:15, color:"#1a1a1a", marginBottom:4 }}>{show.venue}</div>
+                <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom: show.seat||extractHashtags(show.memo).length?"6px":0 }}>
+                  {show.place && <span style={S.infoBadge}>🗾 {show.place}</span>}
+                  {show.seat  && <span style={S.infoBadge}>🎫 {show.seat}</span>}
+                </div>
+                {show.setlist && (
+                  <div style={{ fontSize:11, color:"#666", marginBottom:4 }}>
+                    🎵 {show.setlist.split(/[/\n]/)[0].trim()}{show.setlist.split(/[/\n]/).length>1?"…":""}
+                  </div>
+                )}
+                {extractHashtags(show.memo).length > 0 && (
+                  <div style={S.tagWrap}>{extractHashtags(show.memo).map((t)=><span key={t} style={S.tagPill}>{t}</span>)}</div>
+                )}
+                {(show.images?.length>0||show.videos?.length>0) && (
+                  <div style={{ display:"flex", gap:5, marginTop:4 }}>
+                    {show.images?.length>0 && <span style={S.mediaBadge}>🖼 {show.images.length}</span>}
+                    {show.videos?.length>0 && <span style={S.mediaBadge}>🎬 {show.videos.length}</span>}
+                  </div>
+                )}
+              </div>
+              <button style={{ ...S.delBtn, alignSelf:"flex-start" }} onClick={(e) => { e.stopPropagation(); deleteShow(show.id); }}>🗑</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════════
+  //  LAYER: 公演詳細
+  // ════════════════════════════════
+  if (layer === "show_detail" && activeShow) return (
+    <div>
+      {/* Breadcrumb */}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tours"); setActiveTour(null); setSearchQ(""); }}>
+          🎸 ライブ
+        </button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tour_detail"); setActiveShow(null); }}>
+          {activeTour.title}
+        </button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeShow.venue} {activeShow.date}</span>
+      </div>
+
+      <div style={S.detailCard}>
+        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background: activeShow.attended?"#4ec94e":"#aaa" }} />
+
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8, marginBottom:12 }}>
+          <div>
+            <div style={{ fontSize:20, fontWeight:900, color:"#1a1a1a", marginBottom:6 }}>{activeShow.venue}</div>
+            <span style={{ ...LS.attendPill, background: activeShow.attended?"rgba(78,201,78,.15)":"rgba(255,255,255,.05)", color: activeShow.attended?"#4ec94e":"#777", border:`1px solid ${activeShow.attended?"rgba(78,201,78,.3)":"rgba(255,255,255,.1)"}` }}>
+              {activeShow.attended ? "✅ 参加" : "⬜ 未参加"}
+            </span>
+          </div>
+          <span style={{ ...S.dateTxt, fontSize:13 }}>{activeShow.date}</span>
+        </div>
+
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+          {activeShow.place && <span style={S.infoBadge}>🗾 {activeShow.place}</span>}
+          {activeShow.seat  && <span style={S.infoBadge}>🎫 {activeShow.seat}</span>}
+        </div>
+
+        {/* Setlist */}
+        {activeShow.setlist && (
+          <div style={S.setlistBox}>
+            <div style={S.sectionTitle}>🎵 セットリスト</div>
+            <div style={{ marginTop:8 }}>
+              {parseSetlist(activeShow.setlist).map((row, i) =>
+                row.type === "header" ? (
+                  <div key={i} style={{ padding:"8px 0 4px", marginTop:6, display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ flex:1, height:1, background:"#a5d6a7" }} />
+                    <span style={{ fontSize:11, fontWeight:800, color:"#1e7e34", letterSpacing:"0.08em", textTransform:"uppercase" }}>{row.text}</span>
+                    <div style={{ flex:1, height:1, background:"#a5d6a7" }} />
+                  </div>
+                ) : (
+                  <div key={i} style={{ padding:"5px 0", borderBottom:"1px solid #e8f0e8", display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ color:"#b71c1c", fontSize:10, fontWeight:700, minWidth:22, textAlign:"right" }}>{String(row.num).padStart(2,"0")}</span>
+                    <span style={{ fontSize:14, color:"#111" }}>{row.text}</span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Memo */}
+        {activeShow.memo && (
+          <div style={{ fontSize:14, lineHeight:1.8, color:"#222", whiteSpace:"pre-wrap", marginTop:14 }}>
+            {activeShow.memo}
+          </div>
+        )}
+        {extractHashtags(activeShow.memo).length > 0 && (
+          <div style={{ ...S.tagWrap, marginTop:8 }}>
+            {extractHashtags(activeShow.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+          </div>
+        )}
+
+        {/* Media */}
+        {activeShow.images?.length>0 && (
+          <div style={S.mediaSection}>
+            <div style={S.sectionTitle}>📷 画像</div>
+            <div style={S.mediaGrid}>{activeShow.images.map((img,i)=><img key={i} src={img.url} style={S.thumb}/>)}</div>
+          </div>
+        )}
+        {activeShow.videos?.length>0 && (
+          <div style={S.mediaSection}>
+            <div style={S.sectionTitle}>🎬 動画</div>
+            <div style={S.mediaGrid}>{activeShow.videos.map((v,i)=><video key={i} src={v.url} controls style={S.thumb}/>)}</div>
+          </div>
+        )}
+
+        {showForm==="edit_show" && (
+          <div style={{ ...S.formCard, marginTop:16 }}>
+            <div style={{ ...LS.formSectionLabel }}>✏️ 公演情報を編集</div>
+            <div style={S.formGrid2}>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>公演日</label><input type="date" style={S.inputBase} value={editShowForm.date} onChange={(e)=>setEditShowForm((p)=>({...p,date:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>会場</label><input style={S.inputBase} value={editShowForm.venue} onChange={(e)=>setEditShowForm((p)=>({...p,venue:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>開催地</label><input style={S.inputBase} value={editShowForm.place} onChange={(e)=>setEditShowForm((p)=>({...p,place:e.target.value}))}/></div>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>参加 / 未参加</label>
+                <div style={{display:"flex",gap:8}}>
+                  {[{v:true,l:"✅ 参加した"},{v:false,l:"⬜ 参加しなかった"}].map((o)=>(
+                    <button key={String(o.v)} style={{...S.typeBtn,...(editShowForm.attended===o.v?{borderColor:o.v?"#1e7e34":"#aaa",background:o.v?"rgba(30,126,52,.1)":"rgba(255,255,255,.06)",color:o.v?"#1e7e34":"#666"}:{})}}
+                      onClick={()=>setEditShowForm((p)=>({...p,attended:o.v}))}>{o.l}</button>
+                  ))}
+                </div>
+              </div>
+              {editShowForm.attended && <div style={S.fieldGroup}><label style={S.fieldLabel}>🎫 座席</label><input style={S.inputBase} value={editShowForm.seat} onChange={(e)=>setEditShowForm((p)=>({...p,seat:e.target.value}))}/></div>}
+            </div>
+            <div style={S.fieldGroup}><label style={S.fieldLabel}>🎵 セットリスト</label><textarea style={S.textarea} rows={5} value={editShowForm.setlist} onChange={(e)=>setEditShowForm((p)=>({...p,setlist:e.target.value}))}/></div>
+            <div style={S.fieldGroup}><label style={S.fieldLabel}>メモ</label><textarea style={S.textarea} rows={2} value={editShowForm.memo} onChange={(e)=>setEditShowForm((p)=>({...p,memo:e.target.value}))}/></div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button style={S.cancelBtn} onClick={()=>setShowForm("none")}>キャンセル</button>
+              <button style={S.saveBtn} onClick={()=>{
+                setShows((p)=>p.map((s)=>s.id===editShowForm.id?{...editShowForm}:s));
+                setActiveShow(editShowForm);
+                setShowForm("none");
+              }}>保存する ✓</button>
+            </div>
+          </div>
+        )}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:20 }}>
+          {dialog}
+          <button style={LS.editBtn} onClick={()=>{setEditShowForm({...activeShow});setShowForm(showForm==="edit_show"?"none":"edit_show");}}>
+            {showForm==="edit_show"?"✕ キャンセル":"✏️ 公演を編集"}
+          </button>
+          <button style={S.dangerBtn} onClick={() => confirm("この公演を削除しますか？",()=>deleteShow(activeShow.id))}>🗑 削除する</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ════════════════════════════
+  //  LAYER: 統計
+  // ════════════════════════════
+  if (layer === "stats") return (
+    <div>
+      {dialog}
+      <PageHeader icon="🎸" title="ライブ" subtitle="ツアー→公演の2層で管理"
+        action={
+          <div style={{ display:"flex", gap:8 }}>
+            <button style={{ ...S.tabBtn, ...S.tabBtnActive }}
+              onClick={() => setLayer("tours")}>
+              📊 統計
+            </button>
+            <button style={S.addBtn} onClick={() => { setLayer("tours"); setShowForm("tour"); }}>
+              ＋ ツアーを追加
+            </button>
+          </div>
+        }
+      />
+      <LiveStats tours={tours} shows={shows} />
+    </div>
+  );
+
+  return null;
+}
+
+// ── LiveStats component ─────────────────────────────────────
+function LiveStats({ tours, shows }) {
+  const attendedShows = shows.filter(s => s.attended);
+
+  // 年ごとの参加数
+  const byYear = attendedShows.reduce((acc, s) => {
+    const y = s.date.slice(0,4);
+    acc[y] = (acc[y]||0) + 1;
+    return acc;
+  }, {});
+  const years = Object.keys(byYear).sort();
+  const maxYear = Math.max(...Object.values(byYear), 1);
+
+  // 曲ごとの演奏回数
+  const songCount = {};
+  attendedShows.forEach(s => {
+    parseSetlistSongs(s.setlist).forEach(song => {
+      const key = song.trim();
+      if (key) songCount[key] = (songCount[key]||0) + 1;
+    });
+  });
+  const songRanking = Object.entries(songCount).sort((a,b) => b[1]-a[1]).slice(0,20);
+  const maxSong = songRanking[0]?.[1] || 1;
+
+  // ツアーごとのセトリ
+  const tourSetlists = tours.map(tour => {
+    const ts = shows.filter(s => s.tourId===tour.id && s.attended && s.setlist);
+    const songs = [...new Set(ts.flatMap(s => parseSetlistSongs(s.setlist)))];
+    return { tour, songs, showCount:ts.length };
+  }).filter(t => t.songs.length > 0);
+
+  // アンコール限定曲
+  const encoreOnlySongs = (() => {
+    const allShows = attendedShows.filter(s => s.setlist);
+    const encoreSongs = new Set(); const mainSongs = new Set();
+    allShows.forEach(s => {
+      let inEncore = false;
+      parseSetlist(s.setlist).forEach(row => {
+        if (row.type==="header") inEncore = true;
+        else if (inEncore) encoreSongs.add(row.text);
+        else mainSongs.add(row.text);
+      });
+    });
+    return [...encoreSongs].filter(s => !mainSongs.has(s));
+  })();
+
+  const RC = ["#b71c1c","#c8960a","#1e7e34"];
+  const card = { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, padding:20, boxShadow:"0 1px 4px rgba(0,0,0,.04)" };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+      {/* サマリー */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:12 }}>
+        {[
+          { label:"参加ライブ数", value:attendedShows.length, icon:"🎸", color:"#1e7e34" },
+          { label:"ツアー数",     value:tours.length,          icon:"🗓", color:"#c8960a" },
+          { label:"記録曲数",     value:Object.keys(songCount).length, icon:"🎵", color:"#b71c1c" },
+          { label:"未参加公演",   value:shows.filter(s=>!s.attended).length, icon:"📋", color:"#888" },
+        ].map(st => (
+          <div key={st.label} style={{ ...card, padding:"14px 12px", textAlign:"center" }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>{st.icon}</div>
+            <div style={{ fontSize:26, fontWeight:900, color:st.color, lineHeight:1 }}>{st.value}</div>
+            <div style={{ fontSize:11, color:"#888", marginTop:4 }}>{st.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 年ごとの参加数 */}
+      <div style={card}>
+        <div style={{ fontWeight:800, fontSize:15, color:"#1a1a1a", marginBottom:14 }}>📅 年ごとのライブ参加数</div>
+        {years.length === 0 ? <div style={{ color:"#aaa", fontSize:13 }}>参加記録がありません</div> : (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {years.map((y, idx) => (
+              <div key={y} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:"#555", minWidth:44 }}>{y}</div>
+                <div style={{ flex:1, background:"#f0ede6", borderRadius:6, height:28, overflow:"hidden" }}>
+                  <div style={{ height:"100%", borderRadius:6, background:RC[idx%3], width:(byYear[y]/maxYear*100)+"%",
+                    display:"flex", alignItems:"center", justifyContent:"flex-end", paddingRight:8 }}>
+                    <span style={{ fontSize:12, fontWeight:800, color:"#fff" }}>{byYear[y]}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize:12, color:"#888", minWidth:28 }}>{byYear[y]}回</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 演奏回数ランキング */}
+      <div style={card}>
+        <div style={{ fontWeight:800, fontSize:15, color:"#1a1a1a", marginBottom:14 }}>🏆 演奏回数ランキング（参加公演）</div>
+        {songRanking.length === 0 ? <div style={{ color:"#aaa", fontSize:13 }}>セトリデータがありません</div> : (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {songRanking.map(([song, cnt], idx) => (
+              <div key={song} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <div style={{ minWidth:26, height:26, borderRadius:7, display:"flex", alignItems:"center", justifyContent:"center",
+                  background: idx===0?"#c8960a":idx===1?"#aaa":idx===2?"#c87533":"#f0ede6",
+                  color: idx<3?"#fff":"#888", fontSize:10, fontWeight:900, flexShrink:0 }}>{idx+1}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#1a1a1a", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", marginBottom:3 }}>{song}</div>
+                  <div style={{ background:"#f0ede6", borderRadius:4, height:5, overflow:"hidden" }}>
+                    <div style={{ height:"100%", background:RC[idx%3], width:(cnt/maxSong*100)+"%" }} />
+                  </div>
+                </div>
+                <div style={{ fontSize:13, fontWeight:800, color:"#555", minWidth:30, textAlign:"right" }}>{cnt}回</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ツアーごとのセトリ比較 */}
+      {tourSetlists.length > 0 && (
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:15, color:"#1a1a1a", marginBottom:14 }}>🎸 ツアーごとのセトリ</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            {tourSetlists.map(({ tour, songs, showCount }, idx) => (
+              <div key={tour.id} style={{ borderLeft:"3px solid "+RC[idx%3], paddingLeft:12 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontWeight:800, fontSize:13, color:"#1a1a1a" }}>{tour.title}</div>
+                  <span style={{ fontSize:11, color:"#888" }}>{showCount}公演 / {songs.length}曲</span>
+                </div>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
+                  {songs.map(song => {
+                    const cnt = songCount[song]||0;
+                    return (
+                      <span key={song} style={{ fontSize:11, padding:"3px 8px", borderRadius:4, fontWeight:600,
+                        background: cnt>=3?"#e8f5e9": cnt>=2?"#fff8e1":"#f5f2eb",
+                        color:      cnt>=3?"#1e7e34": cnt>=2?"#7a5c00":"#555",
+                        border:     "1px solid "+(cnt>=3?"#a5d6a7": cnt>=2?"#ffe082":"#ddd8cc") }}>
+                        {song}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div style={{ fontSize:11, color:"#aaa" }}>🟢 3回以上　🟡 2回　⬜ 1回のみ</div>
+          </div>
+        </div>
+      )}
+
+      {/* アンコール限定曲 */}
+      {encoreOnlySongs.length > 0 && (
+        <div style={card}>
+          <div style={{ fontWeight:800, fontSize:15, color:"#1a1a1a", marginBottom:4 }}>🎤 アンコール限定曲</div>
+          <div style={{ fontSize:11, color:"#aaa", marginBottom:10 }}>本編では演奏されなかった曲</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {encoreOnlySongs.map(song => (
+              <span key={song} style={{ fontSize:12, padding:"4px 10px", borderRadius:6, background:"#fce4e4", border:"1px solid #ef9a9a", color:"#b71c1c", fontWeight:700 }}>{song}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Live-page-specific styles
+const LS = {
+  formSectionLabel: { fontSize:11, fontWeight:800, color:"#b71c1c", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid rgba(255,78,26,.2)" },
+  imagePreviewRow:  { display:"flex", flexWrap:"wrap", gap:8, marginTop:8 },
+  previewWrap:      { position:"relative", width:100, height:72 },
+  previewImg:       { width:100, height:72, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.1)" },
+
+  // tour card
+  tourCard:         { background:"#fff", border:"1px solid #ddd8cc", borderRadius:14, overflow:"hidden", cursor:"pointer", position:"relative", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  tourKVStrip:      { position:"relative", height:140, overflow:"hidden", display:"block" },
+  tourKVImg:        { display:"block", width:"100%", height:"100%", objectFit:"cover", objectPosition:"center top", opacity:.75 },
+  tourKVOverlay:    { position:"absolute", inset:0, background:"linear-gradient(to top, rgba(10,10,15,.9) 0%, transparent 60%)" },
+  tourStats:        { display:"flex", alignItems:"center", gap:12, marginTop:12, paddingTop:10, borderTop:"1px solid rgba(255,255,255,.06)" },
+  tourStatItem:     { display:"flex", flexDirection:"column", alignItems:"center", gap:2 },
+  tourStatNum:      { fontSize:20, fontWeight:900, color:"#1a1a1a", lineHeight:1 },
+  tourStatLabel:    { fontSize:10, color:"#777", fontWeight:600 },
+  tourStatDivider:  { width:1, height:28, background:"#e0dbd0" },
+  showPreviewRow:   { display:"flex", alignItems:"center", gap:6 },
+  attendDot:        { width:6, height:6, borderRadius:"50%", flexShrink:0 },
+
+  // tour detail header
+  tourDetailHeader: { background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:12, overflow:"hidden", marginBottom:18 },
+  tourDetailKV:     { display:"flex", gap:0, overflow:"hidden", maxHeight:140 },
+  tourDetailKVImg:  { flex:1, objectFit:"cover", maxHeight:140 },
+
+  // breadcrumb
+  breadcrumb:       { display:"flex", alignItems:"center", gap:6, marginBottom:18, flexWrap:"wrap" },
+  breadcrumbBtn:    { background:"transparent", border:"none", color:"#888", cursor:"pointer", fontSize:13, fontWeight:600, fontFamily:"inherit", padding:"2px 0" },
+  breadcrumbSep:    { color:"#ccc", fontSize:14 },
+  breadcrumbCurrent:{ fontSize:13, fontWeight:700, color:"#111" },
+
+  // show card
+  showCard:         { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, display:"flex", gap:14, padding:"14px 16px", cursor:"pointer", alignItems:"flex-start", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  showCardAttended: { borderLeftColor:"#1e7e34", borderLeftWidth:3 },
+  showCardAbsent:   { borderLeftColor:"#ddd8cc", borderLeftWidth:3, opacity:.65 },
+  showCardLeft:     { display:"flex", flexDirection:"column", alignItems:"center", gap:6, minWidth:72 },
+  showCardBody:     { flex:1, minWidth:0 },
+  showDate:         { fontSize:12, color:"#555", fontWeight:600, textAlign:"center" },
+  attendPill:       { fontSize:11, fontWeight:700, borderRadius:5, padding:"3px 8px", display:"inline-block" },
+  editBtn:          { background:"#f5f2eb", border:"1px solid #ddd8cc", color:"#555", borderRadius:6, padding:"6px 12px", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", flexShrink:0, whiteSpace:"nowrap" },
+};
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  GOODS PAGE  — ツアー（親）→ グッズアイテム（子）の2層構造
+// ═══════════════════════════════════════════════════════════════
+
+const GOODS_CATS   = ["衣類","小物","音源","書籍・写真集","その他"];
+const GOODS_STATUS = [
+  { id:"所持",  color:"#4ec94e" },
+  { id:"欲しい", color:"#f7c948" },
+  { id:"未入手", color:"#888" },
+];
+
+function GoodsPage({ goodsTours, setGoodsTours, goodsItems, setGoodsItems }) {
+  // layer: "tours" | "tour_detail" | "item_detail"
+  const [layer,       setLayer]      = useState("tours");
+  const [confirm, dialog] = useConfirm();
+  const [activeTour,  setActiveTour] = useState(null);
+  const [activeItem,  setActiveItem] = useState(null);
+  const [showForm,    setShowForm]   = useState("none"); // "none"|"tour"|"item"|"edit_tour"|"edit_item"
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [editItemForm, setEditItemForm] = useState(null);
+  const [searchQ,     setSearchQ]    = useState("");
+
+  // ── Tour form ──
+  const [tourForm,     setTourForm]     = useState({ title:"", keyvisual:null });
+  const [editTourForm, setEditTourForm] = useState(null);
+  const tourKVRef     = useRef();
+  const editTourKVRef = useRef();
+
+  // ── Item form ──
+  const emptyItem = { name:"", category:"衣類", keyvisual:null, subImages:[], price:"", date:today(), status:"所持", memo:"", url:"" };
+  const [itemForm, setItemForm] = useState(emptyItem);
+  const itemKVRef  = useRef();
+  const itemSubRef = useRef();
+
+  // ── Tour handlers ──
+  const addTour = () => {
+    if (!tourForm.title) return;
+    const nt = { id:Date.now(), createdAt:today(), ...tourForm };
+    setGoodsTours((p) => [nt, ...p]);
+    setTourForm({ title:"", keyvisual:null });
+    setShowForm("none");
+  };
+  const deleteTour = (id) => {
+    setGoodsTours((p) => p.filter((t) => t.id !== id));
+    setGoodsItems((p) => p.filter((g) => g.tourId !== id));
+    setLayer("tours"); setActiveTour(null);
+  };
+  const saveTourEdit = () => {
+    if (!editTourForm.title) return;
+    setGoodsTours((p) => p.map((t) => t.id === editTourForm.id ? { ...editTourForm } : t));
+    setActiveTour(editTourForm);
+    setShowForm("none"); setEditTourForm(null);
+  };
+  const handleTourKV = async (e, setter) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const url = await readFileAsDataURL(f);
+    setter((p) => ({ ...p, keyvisual:{ name:f.name, url } }));
+    e.target.value = "";
+  };
+
+  // ── Item handlers ──
+  const addItem = () => {
+    if (!itemForm.name) return;
+    setGoodsItems((p) => [{ id:Date.now(), tourId:activeTour.id, ...itemForm, price: itemForm.price ? Number(itemForm.price) : 0 }, ...p]);
+    setItemForm(emptyItem);
+    setShowForm("none");
+  };
+  const deleteItem = (id) => {
+    setGoodsItems((p) => p.filter((g) => g.id !== id));
+    setLayer("tour_detail"); setActiveItem(null);
+  };
+  const handleItemKV = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const url = await readFileAsDataURL(f);
+    setItemForm((p) => ({ ...p, keyvisual:{ name:f.name, url } }));
+    e.target.value = "";
+  };
+  const handleItemSub = async (e) => {
+    const d = await filesToDataURLs(e.target.files);
+    setItemForm((p) => ({ ...p, subImages:[...p.subImages, ...d] }));
+    e.target.value = "";
+  };
+  const removeItemSub = (i) => setItemForm((p) => ({ ...p, subImages:p.subImages.filter((_,j) => j!==i) }));
+
+  const tourItems = (t) => goodsItems.filter((g) => g.tourId === t.id);
+  const filteredItems = activeTour
+    ? tourItems(activeTour).filter((g) => {
+        const ms = filterStatus==="all" || g.status===filterStatus;
+        const q  = searchQ.toLowerCase();
+        const mq = !q || g.name.toLowerCase().includes(q) || g.memo.toLowerCase().includes(q) ||
+          extractHashtags(g.memo).some((t) => t.toLowerCase().includes(q));
+        return ms && mq;
+      })
+    : [];
+  const allItemTags = activeTour ? [...new Set(tourItems(activeTour).flatMap((g) => extractHashtags(g.memo)))] : [];
+
+  // ════════════════════
+  //  LAYER: ツアー一覧
+  // ════════════════════
+  if (layer === "tours") return (
+    <div>
+      {dialog}
+      <PageHeader icon="🛍" title="グッズ" subtitle="ツアー別にグッズを管理"
+        action={
+          <button style={S.addBtn} onClick={() => setShowForm(showForm==="tour"?"none":"tour")}>
+            {showForm==="tour" ? "✕ キャンセル" : "＋ ツアーを追加"}
+          </button>
+        }
+      />
+
+      {/* Summary across all */}
+      <div style={S.statsBar}>
+        {GOODS_STATUS.map((st) => {
+          const items = goodsItems.filter((g) => g.status===st.id);
+          const total = items.reduce((s,g) => s+(g.price||0), 0);
+          return (
+            <div key={st.id} style={S.statItem}>
+              <span style={{ ...S.statDot, background:st.color }} />
+              <span style={S.statLabel}>{st.id}</span>
+              <span style={S.statCount}>{items.length}点 {total>0?`¥${fmt(total)}`:""}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Tour add form */}
+      {showForm==="tour" && (
+        <div style={{ ...S.formCard, marginBottom:20 }}>
+          <div style={GS.formSectionLabel}>① ツアーグッズ情報</div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>ツアー名 *</label>
+            <input style={S.inputBase} placeholder="COMINATCHA!! TOUR 2025 グッズ"
+              value={tourForm.title} onChange={(e) => setTourForm((p) => ({ ...p, title:e.target.value }))} />
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🖼 キービジュアル（ツアーカバー画像）</label>
+            <input type="file" accept="image/*" ref={tourKVRef} style={{ display:"none" }}
+              onChange={(e) => handleTourKV(e, setTourForm)} />
+            <button style={S.uploadBtn} onClick={() => tourKVRef.current.click()}>📷 画像を選択</button>
+            {tourForm.keyvisual && (
+              <div style={{ position:"relative", width:120, height:90, marginTop:8 }}>
+                <img src={tourForm.keyvisual.url} alt="" style={{ width:120, height:90, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.1)", display:"block" }} />
+                <button style={S.removeBtn} onClick={() => setTourForm((p) => ({ ...p, keyvisual:null }))}>✕</button>
+              </div>
+            )}
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!tourForm.title ? S.saveBtnOff : {}) }} onClick={addTour}>
+              ツアーを作成 ✓
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tour cards */}
+      {goodsTours.length === 0 ? <EmptyState /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {goodsTours.map((tour) => {
+            const items = tourItems(tour);
+            const owned = items.filter((g) => g.status==="所持");
+            const want  = items.filter((g) => g.status==="欲しい");
+            return (
+              <div key={tour.id} style={GS.tourCard}
+                onClick={() => { setActiveTour(tour); setLayer("tour_detail"); setSearchQ(""); setFilterStatus("all"); }}>
+                {/* Keyvisual */}
+                {tour.keyvisual && (
+                  <div style={GS.tourKVStrip}>
+                    <img src={tour.keyvisual.url} alt="" style={GS.tourKVImg} />
+                    <div style={GS.tourKVOverlay} />
+                  </div>
+                )}
+                <div style={{ padding:"16px 18px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                    <div style={{ fontWeight:900, fontSize:16, color:"#1a1a1a", marginBottom:10 }}>{tour.title}</div>
+                    <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); deleteTour(tour.id); }}>🗑</button>
+                  </div>
+                  <div style={GS.tourStats}>
+                    <div style={GS.tourStatItem}><span style={GS.tourStatNum}>{items.length}</span><span style={GS.tourStatLabel}>アイテム</span></div>
+                    <div style={GS.tourStatDivider} />
+                    <div style={GS.tourStatItem}><span style={{ ...GS.tourStatNum, color:"#4ec94e" }}>{owned.length}</span><span style={GS.tourStatLabel}>所持</span></div>
+                    <div style={GS.tourStatDivider} />
+                    <div style={GS.tourStatItem}><span style={{ ...GS.tourStatNum, color:"#f7c948" }}>{want.length}</span><span style={GS.tourStatLabel}>欲しい</span></div>
+                    {owned.length>0 && (
+                      <>
+                        <div style={GS.tourStatDivider} />
+                        <div style={GS.tourStatItem}><span style={GS.tourStatNum}>¥{fmt(owned.reduce((s,g)=>s+(g.price||0),0))}</span><span style={GS.tourStatLabel}>所持合計</span></div>
+                      </>
+                    )}
+                  </div>
+                  {/* Item keyvisual thumbnails */}
+                  {items.filter((g) => g.keyvisual).length > 0 && (
+                    <div style={{ display:"flex", gap:6, marginTop:12, flexWrap:"wrap" }}>
+                      {items.filter((g) => g.keyvisual).slice(0,6).map((g) => (
+                        <div key={g.id} style={{ position:"relative" }}>
+                          <img src={g.keyvisual.url} alt={g.name}
+                            style={{ width:52, height:52, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.12)", display:"block" }} />
+                          <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,.65)", borderRadius:"0 0 6px 6px", fontSize:8, color:"#1a1a1a", padding:"2px 4px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{g.name}</div>
+                          <div style={{ position:"absolute", top:2, right:2, width:6, height:6, borderRadius:"50%", background: GOODS_STATUS.find((s)=>s.id===g.status)?.color||"#aaa" }} />
+                        </div>
+                      ))}
+                      {items.filter((g) => g.keyvisual).length > 6 && (
+                        <div style={{ width:52, height:52, borderRadius:6, background:"rgba(255,255,255,.06)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:"#666" }}>
+                          +{items.filter((g) => g.keyvisual).length - 6}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════
+  //  LAYER: ツアー詳細（アイテム一覧）
+  // ════════════════════════════
+  if (layer === "tour_detail" && activeTour) return (
+    <div>
+      {dialog}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tours"); setActiveTour(null); setShowForm("none"); }}>🛍 グッズ</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeTour.title}</span>
+      </div>
+
+      {/* Tour header */}
+      <div style={GS.tourDetailHeader}>
+        {activeTour.keyvisual && (
+          <div style={GS.tourDetailKV}>
+            <img src={activeTour.keyvisual.url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", display:"block", objectPosition:"center top" }} />
+            <div style={{ position:"absolute", inset:0, background:"linear-gradient(to right, rgba(10,10,15,.7) 0%, transparent 60%)" }} />
+          </div>
+        )}
+        <div style={{ padding:"16px 20px", flex:1 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+            <div style={{ fontSize:18, fontWeight:900, color:"#1a1a1a", marginBottom:8 }}>{activeTour.title}</div>
+            <button style={LS.editBtn} onClick={() => {
+              setEditTourForm({ ...activeTour });
+              setShowForm(showForm==="edit_tour"?"none":"edit_tour");
+            }}>
+              {showForm==="edit_tour" ? "✕" : "✏️ 編集"}
+            </button>
+          </div>
+          <div style={GS.tourStats}>
+            <div style={GS.tourStatItem}><span style={GS.tourStatNum}>{tourItems(activeTour).length}</span><span style={GS.tourStatLabel}>アイテム</span></div>
+            <div style={GS.tourStatDivider} />
+            <div style={GS.tourStatItem}><span style={{ ...GS.tourStatNum, color:"#4ec94e" }}>{tourItems(activeTour).filter((g)=>g.status==="所持").length}</span><span style={GS.tourStatLabel}>所持</span></div>
+            <div style={GS.tourStatDivider} />
+            <div style={GS.tourStatItem}><span style={{ ...GS.tourStatNum, color:"#f7c948" }}>{tourItems(activeTour).filter((g)=>g.status==="欲しい").length}</span><span style={GS.tourStatLabel}>欲しい</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tour edit form */}
+      {showForm==="edit_tour" && editTourForm && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={GS.formSectionLabel}>✏️ ツアー情報を編集</div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>ツアー名 *</label>
+            <input style={S.inputBase} value={editTourForm.title}
+              onChange={(e) => setEditTourForm((p) => ({ ...p, title:e.target.value }))} />
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🖼 キービジュアル</label>
+            <input type="file" accept="image/*" ref={editTourKVRef} style={{ display:"none" }}
+              onChange={(e) => handleTourKV(e, setEditTourForm)} />
+            <button style={S.uploadBtn} onClick={() => editTourKVRef.current.click()}>📷 画像を変更</button>
+            {editTourForm.keyvisual && (
+              <div style={{ position:"relative", width:120, height:90, marginTop:8 }}>
+                <img src={editTourForm.keyvisual.url} alt="" style={{ width:120, height:90, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.1)", display:"block" }} />
+                <button style={S.removeBtn} onClick={() => setEditTourForm((p) => ({ ...p, keyvisual:null }))}>✕</button>
+              </div>
+            )}
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => { setShowForm("none"); setEditTourForm(null); }}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!editTourForm.title ? S.saveBtnOff : {}) }} onClick={saveTourEdit}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* Search + filter + add */}
+      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
+        <div style={{ ...S.searchBox, flex:1, marginBottom:0 }}>
+          <span>🔍</span>
+          <input style={S.searchInput} placeholder="アイテム名・#タグで検索..." value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)} />
+          {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+        </div>
+        <button style={S.addBtn} onClick={() => setShowForm(showForm==="item"?"none":"item")}>
+          {showForm==="item" ? "✕ キャンセル" : "＋ アイテム追加"}
+        </button>
+      </div>
+
+      <div style={{ ...S.filterRow, marginBottom:12 }}>
+        {[{id:"all",label:"ALL",color:"#ff4e1a"}, ...GOODS_STATUS].map((st) => (
+          <button key={st.id}
+            style={{ ...S.chip, ...(filterStatus===st.id ? { borderColor:st.color||"#ff4e1a", background:(st.color||"#ff4e1a")+"22", color:st.color||"#ff4e1a" } : {}) }}
+            onClick={() => setFilterStatus(st.id)}>{st.label||st.id}</button>
+        ))}
+      </div>
+
+      {allItemTags.length > 0 && (
+        <div style={{ ...S.tagRow, marginBottom:14 }}>
+          {allItemTags.slice(0,12).map((t) => (
+            <button key={t} style={{ ...S.hashChip, ...(searchQ===t ? S.hashChipActive : {}) }}
+              onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Item add form */}
+      {showForm==="item" && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={GS.formSectionLabel}>② グッズアイテム情報</div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>アイテム名 *</label>
+              <input style={S.inputBase} placeholder="ツアーTシャツ" value={itemForm.name}
+                onChange={(e) => setItemForm((p) => ({ ...p, name:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>カテゴリ</label>
+              <select style={S.inputBase} value={itemForm.category}
+                onChange={(e) => setItemForm((p) => ({ ...p, category:e.target.value }))}>
+                {GOODS_CATS.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>価格（円）</label>
+              <input type="number" style={S.inputBase} placeholder="4400" value={itemForm.price}
+                onChange={(e) => setItemForm((p) => ({ ...p, price:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>購入日 / 発売日</label>
+              <input type="date" style={S.inputBase} value={itemForm.date}
+                onChange={(e) => setItemForm((p) => ({ ...p, date:e.target.value }))} />
+            </div>
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>ステータス</label>
+            <div style={{ display:"flex", gap:8 }}>
+              {GOODS_STATUS.map((st) => (
+                <button key={st.id}
+                  style={{ ...S.typeBtn, ...(itemForm.status===st.id ? { borderColor:st.color, background:st.color+"22", color:st.color } : {}) }}
+                  onClick={() => setItemForm((p) => ({ ...p, status:st.id }))}>{st.id}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Keyvisual */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🖼 キービジュアル <span style={{opacity:.5,fontSize:11}}>（一覧のサムネになります）</span></label>
+            <input type="file" accept="image/*" ref={itemKVRef} style={{ display:"none" }} onChange={handleItemKV} />
+            <button style={S.uploadBtn} onClick={() => itemKVRef.current.click()}>📷 画像を選択（1枚）</button>
+            {itemForm.keyvisual && (
+              <div style={{ position:"relative", width:120, height:90, marginTop:8 }}>
+                <img src={itemForm.keyvisual.url} alt="" style={{ width:120, height:90, objectFit:"cover", borderRadius:6, border:"1px solid rgba(255,255,255,.1)", display:"block" }} />
+                <button style={S.removeBtn} onClick={() => setItemForm((p) => ({ ...p, keyvisual:null }))}>✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* Sub images */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>📷 サブ画像 <span style={{opacity:.5,fontSize:11}}>（詳細ページで表示、複数枚OK）</span></label>
+            <input type="file" accept="image/*" multiple ref={itemSubRef} style={{ display:"none" }} onChange={handleItemSub} />
+            <button style={S.uploadBtn} onClick={() => itemSubRef.current.click()}>📷 画像を追加</button>
+            {itemForm.subImages.length > 0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                {itemForm.subImages.map((img, i) => (
+                  <div key={i} style={{ position:"relative", width:80, height:60 }}>
+                    <img src={img.url} alt="" style={{ width:80, height:60, objectFit:"cover", borderRadius:5, border:"1px solid rgba(255,255,255,.1)", display:"block" }} />
+                    <button style={S.removeBtn} onClick={() => removeItemSub(i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+            <textarea style={S.textarea} rows={2} value={itemForm.memo}
+              onChange={(e) => setItemForm((p) => ({ ...p, memo:e.target.value }))} />
+            {extractHashtags(itemForm.memo).length > 0 && (
+              <div style={{ ...S.tagWrap, marginTop:6 }}>
+                {extractHashtags(itemForm.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+              </div>
+            )}
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🔗 URL</label>
+            <input type="url" style={S.inputBase} placeholder="https://..." value={itemForm.url}
+              onChange={(e) => setItemForm((p) => ({ ...p, url:e.target.value }))} />
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!itemForm.name ? S.saveBtnOff : {}) }} onClick={addItem}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* Item grid */}
+      {filteredItems.length === 0 && showForm !== "item" ? <EmptyState /> : (
+        <div style={GS.itemGrid}>
+          {filteredItems.map((item) => {
+            const st = GOODS_STATUS.find((s) => s.id===item.status);
+            return (
+              <div key={item.id} style={GS.itemCard} onClick={() => { setActiveItem(item); setLayer("item_detail"); }}>
+                {/* Keyvisual thumbnail */}
+                {item.keyvisual ? (
+                  <div style={GS.itemKVWrap}>
+                    <img src={item.keyvisual.url} alt={item.name} style={GS.itemKVImg} />
+                    <div style={GS.itemKVOverlay} />
+                    <div style={{ ...GS.statusDot, background:st?.color||"#aaa" }} />
+                  </div>
+                ) : (
+                  <div style={GS.itemKVPlaceholder}>
+                    <span style={{ fontSize:28, opacity:.3 }}>🛍</span>
+                    <div style={{ ...GS.statusDot, background:st?.color||"#aaa" }} />
+                  </div>
+                )}
+                <div style={GS.itemCardBody}>
+                  <div style={{ fontWeight:800, fontSize:13, color:"#1a1a1a", marginBottom:4, lineHeight:1.3 }}>{item.name}</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:4 }}>
+                    <span style={S.badgeGray}>{item.category}</span>
+                    <span style={{ ...S.badge, background:(st?.color||"#aaa")+"22", color:st?.color||"#aaa", borderColor:"transparent", fontSize:10 }}>{item.status}</span>
+                  </div>
+                  {item.price > 0 && <div style={{ fontSize:12, color:"#555", marginBottom:4 }}>¥{fmt(item.price)}</div>}
+                  {extractHashtags(item.memo).length > 0 && (
+                    <div style={S.tagWrap}>{extractHashtags(item.memo).slice(0,3).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}</div>
+                  )}
+                  <div style={{ display:"flex", justifyContent:"flex-end", marginTop:4 }}>
+                    <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); confirm("この出演記録を削除しますか？",()=>deleteItem(item.id)); }}>🗑</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════
+  //  LAYER: アイテム詳細
+  // ════════════════════
+  if (layer === "item_detail" && activeItem) {
+    const st = GOODS_STATUS.find((s) => s.id===activeItem.status);
+    return (
+      <div>
+        <div style={LS.breadcrumb}>
+          <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tours"); setActiveTour(null); }}>🛍 グッズ</button>
+          <span style={LS.breadcrumbSep}>›</span>
+          <button style={LS.breadcrumbBtn} onClick={() => { setLayer("tour_detail"); setActiveItem(null); }}>{activeTour.title}</button>
+          <span style={LS.breadcrumbSep}>›</span>
+          <span style={LS.breadcrumbCurrent}>{activeItem.name}</span>
+        </div>
+
+        <div style={S.detailCard}>
+          <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background:st?.color||"#aaa" }} />
+
+          {/* Keyvisual big display */}
+          {activeItem.keyvisual && (
+            <div style={{ marginBottom:16, borderRadius:10, overflow:"hidden", maxHeight:220 }}>
+              <img src={activeItem.keyvisual.url} alt={activeItem.name}
+                style={{ width:"100%", maxHeight:220, objectFit:"cover", display:"block" }} />
+            </div>
+          )}
+
+          <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+            <h2 style={{ fontSize:18, fontWeight:900, margin:0 }}>{activeItem.name}</h2>
+            <span style={S.dateTxt}>{activeItem.date}</span>
+          </div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:12 }}>
+            <span style={S.infoBadge}>🏷 {activeItem.category}</span>
+            {activeItem.price > 0 && <span style={S.infoBadge}>💴 ¥{fmt(activeItem.price)}</span>}
+            <span style={{ ...S.badge, background:(st?.color||"#aaa")+"22", color:st?.color||"#aaa", borderColor:"transparent" }}>{activeItem.status}</span>
+          </div>
+          {activeItem.memo && (
+            <div style={{ fontSize:14, lineHeight:1.7, color:"#222", whiteSpace:"pre-wrap", marginBottom:12 }}>
+              {activeItem.memo}
+            </div>
+          )}
+          {extractHashtags(activeItem.memo).length > 0 && (
+            <div style={{ ...S.tagWrap, marginBottom:12 }}>
+              {extractHashtags(activeItem.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+            </div>
+          )}
+          {activeItem.url && (
+            <div style={{ marginBottom:12 }}>
+              <a href={activeItem.url} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize:13, color:"#7ec8ff", textDecoration:"none" }}>🔗 {activeItem.url}</a>
+            </div>
+          )}
+          {/* Sub images */}
+          {activeItem.subImages?.length > 0 && (
+            <div style={S.mediaSection}>
+              <div style={S.sectionTitle}>📷 サブ画像</div>
+              <div style={S.mediaGrid}>
+                {activeItem.subImages.map((img, i) => (
+                  <img key={i} src={img.url} alt="" style={S.thumb} />
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
+            {showForm==="edit_item" && editItemForm && (
+              <div style={{ ...S.formCard, marginTop:16 }}>
+                <div style={{ ...GS.formSectionLabel }}>✏️ アイテムを編集</div>
+                <div style={S.formGrid2}>
+                  <div style={S.fieldGroup}><label style={S.fieldLabel}>アイテム名</label><input style={S.inputBase} value={editItemForm.name} onChange={(e)=>setEditItemForm((p)=>({...p,name:e.target.value}))}/></div>
+                  <div style={S.fieldGroup}><label style={S.fieldLabel}>カテゴリ</label><select style={S.inputBase} value={editItemForm.category} onChange={(e)=>setEditItemForm((p)=>({...p,category:e.target.value}))}>{GOODS_CATS.map((cat)=><option key={cat}>{cat}</option>)}</select></div>
+                  <div style={S.fieldGroup}><label style={S.fieldLabel}>価格（円）</label><input type="number" style={S.inputBase} value={editItemForm.price||""} onChange={(e)=>setEditItemForm((p)=>({...p,price:Number(e.target.value)}))}/></div>
+                  <div style={S.fieldGroup}><label style={S.fieldLabel}>日付</label><input type="date" style={S.inputBase} value={editItemForm.date} onChange={(e)=>setEditItemForm((p)=>({...p,date:e.target.value}))}/></div>
+                </div>
+                <div style={S.fieldGroup}>
+                  <label style={S.fieldLabel}>ステータス</label>
+                  <div style={{display:"flex",gap:8}}>
+                    {GOODS_STATUS.map((st)=><button key={st.id} style={{...S.typeBtn,...(editItemForm.status===st.id?{borderColor:st.color,background:st.color+"22",color:st.color}:{})}} onClick={()=>setEditItemForm((p)=>({...p,status:st.id}))}>{st.id}</button>)}
+                  </div>
+                </div>
+                <div style={S.fieldGroup}><label style={S.fieldLabel}>メモ</label><textarea style={S.textarea} rows={2} value={editItemForm.memo} onChange={(e)=>setEditItemForm((p)=>({...p,memo:e.target.value}))}/></div>
+                <div style={S.fieldGroup}><label style={S.fieldLabel}>🔗 URL</label><input type="url" style={S.inputBase} value={editItemForm.url||""} onChange={(e)=>setEditItemForm((p)=>({...p,url:e.target.value}))}/></div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                  <button style={S.cancelBtn} onClick={()=>setShowForm("none")}>キャンセル</button>
+                  <button style={S.saveBtn} onClick={()=>{
+                    setGoodsItems((p)=>p.map((g)=>g.id===editItemForm.id?{...editItemForm}:g));
+                    setActiveItem(editItemForm); setShowForm("none");
+                  }}>保存する ✓</button>
+                </div>
+              </div>
+            )}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:20 }}>
+              {dialog}
+              <button style={LS.editBtn} onClick={()=>{setEditItemForm({...activeItem});setShowForm(showForm==="edit_item"?"none":"edit_item");}}>
+                {showForm==="edit_item"?"✕ キャンセル":"✏️ 編集"}
+              </button>
+              <button style={S.dangerBtn} onClick={() => confirm("このアイテムを削除しますか？",()=>deleteItem(activeItem.id))}>🗑 削除する</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// Goods-page-specific styles
+const GS = {
+  formSectionLabel: { fontSize:11, fontWeight:800, color:"#f7c948", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid rgba(247,201,72,.2)" },
+  tourCard:         { background:"#fff", border:"1px solid #ddd8cc", borderRadius:14, overflow:"hidden", cursor:"pointer", position:"relative", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  tourKVStrip:      { position:"relative", height:130, overflow:"hidden", display:"block" },
+  tourKVImg:        { display:"block", width:"100%", height:"100%", objectFit:"cover", objectPosition:"center top", opacity:.75 },
+  tourKVOverlay:    { position:"absolute", inset:0, background:"linear-gradient(to top, rgba(10,10,15,.85) 0%, transparent 55%)" },
+  tourStats:        { display:"flex", alignItems:"center", gap:12, marginTop:10, paddingTop:10, borderTop:"1px solid rgba(255,255,255,.06)" },
+  tourStatItem:     { display:"flex", flexDirection:"column", alignItems:"center", gap:2 },
+  tourStatNum:      { fontSize:18, fontWeight:900, color:"#1a1a1a", lineHeight:1 },
+  tourStatLabel:    { fontSize:10, color:"#777", fontWeight:600 },
+  tourStatDivider:  { width:1, height:24, background:"#e0dbd0" },
+  tourDetailHeader: { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, overflow:"hidden", marginBottom:16, display:"flex", position:"relative", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  tourDetailKV:     { width:120, flexShrink:0, position:"relative", overflow:"hidden" },
+  // item grid
+  itemGrid:         { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12 },
+  itemCard:         { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, overflow:"hidden", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  itemKVWrap:       { position:"relative", height:120, overflow:"hidden" },
+  itemKVImg:        { display:"block", width:"100%", height:"100%", objectFit:"cover" },
+  itemKVOverlay:    { position:"absolute", inset:0, background:"linear-gradient(to top, rgba(10,10,15,.6) 0%, transparent 50%)" },
+  itemKVPlaceholder:{ height:120, background:"#f0ede6", display:"flex", alignItems:"center", justifyContent:"center", position:"relative" },
+  statusDot:        { position:"absolute", top:6, right:6, width:8, height:8, borderRadius:"50%", boxShadow:"0 0 4px rgba(0,0,0,.5)" },
+  itemCardBody:     { padding:"10px 12px" },
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  MEDIA PAGE  — 種別（親）→ 出演記録（子）の2層構造
+// ═══════════════════════════════════════════════════════════════
+
+function MediaPage({ mediaTypes, setMediaTypes, mediaItems, setMediaItems }) {
+  // layer: "types" | "type_detail" | "item_detail"
+  const [layer,       setLayer]      = useState("types");
+  const [confirm, dialog] = useConfirm();
+  const [activeType,  setActiveType] = useState(null);
+  const [activeItem,  setActiveItem] = useState(null);
+  const [showForm,    setShowForm]   = useState("none"); // "none"|"item"|"add_type"|"edit_type"|"edit_item"
+  const [searchQ,     setSearchQ]    = useState("");
+  const [editMediaItemForm, setEditMediaItemForm] = useState(null);
+
+  // ── Type form（親の追加・編集）──
+  const TYPE_COLORS = ["#ff4e1a","#f7c948","#4ec9ff","#4ec94e","#c084fc","#f472b6","#aaa"];
+  const TYPE_ICONS  = ["📺","📻","📖","🌐","🎙","🎵","📰","🎬","📡"];
+  const emptyTypeForm = { label:"", icon:"📺", color:"#ff4e1a" };
+  const [typeForm,     setTypeForm]     = useState(emptyTypeForm);
+  const [editTypeForm, setEditTypeForm] = useState(null);
+
+  // ── Item form（子の追加）──
+  const emptyItem = { title:"", date:today(), detail:"", memo:"", url:"", images:[] };
+  const [itemForm, setItemForm] = useState(emptyItem);
+  const imgRef = useRef();
+
+  // ── Type handlers ──
+  const addType = () => {
+    if (!typeForm.label) return;
+    setMediaTypes((p) => [...p, { id: "custom_" + Date.now(), ...typeForm }]);
+    setTypeForm(emptyTypeForm);
+    setShowForm("none");
+  };
+  const saveTypeEdit = () => {
+    if (!editTypeForm.label) return;
+    setMediaTypes((p) => p.map((t) => t.id === editTypeForm.id ? { ...editTypeForm } : t));
+    setActiveType(editTypeForm);
+    setShowForm("none"); setEditTypeForm(null);
+  };
+  const deleteType = (id) => {
+    setMediaTypes((p) => p.filter((t) => t.id !== id));
+    setMediaItems((p) => p.filter((m) => m.typeId !== id));
+    setLayer("types"); setActiveType(null);
+  };
+
+  // ── Item handlers ──
+  const addItem = () => {
+    if (!itemForm.title) return;
+    setMediaItems((p) => [{ id:Date.now(), typeId:activeType.id, ...itemForm }, ...p]);
+    setItemForm(emptyItem);
+    setShowForm("none");
+  };
+  const deleteItem = (id) => {
+    setMediaItems((p) => p.filter((m) => m.id !== id));
+    setLayer("type_detail"); setActiveItem(null);
+  };
+  const handleFile = async (e) => {
+    const d = await filesToDataURLs(e.target.files);
+    setItemForm((p) => ({ ...p, images:[...p.images, ...d] }));
+    e.target.value = "";
+  };
+  const removeFile = (i) => setItemForm((p) => ({ ...p, images:p.images.filter((_,j) => j!==i) }));
+
+  const typeItems  = (t) => mediaItems.filter((m) => m.typeId === t.id).sort((a,b) => b.date.localeCompare(a.date));
+  const filteredItems = activeType
+    ? typeItems(activeType).filter((m) => {
+        const q = searchQ.toLowerCase();
+        return !q || m.title.toLowerCase().includes(q) || m.memo.toLowerCase().includes(q) ||
+          m.detail.toLowerCase().includes(q) || extractHashtags(m.memo).some((t) => t.toLowerCase().includes(q));
+      })
+    : [];
+  const allItemTags = activeType ? [...new Set(typeItems(activeType).flatMap((m) => extractHashtags(m.memo)))] : [];
+
+  // ════════════════════════════
+  //  LAYER: 種別一覧（トップ）
+  // ════════════════════════════
+  if (layer === "types") return (
+    <div>
+      {dialog}
+      <PageHeader icon="📺" title="メディア出演" subtitle="種別ごとに出演記録を管理"
+        action={
+          <div style={{ display:"flex", gap:8 }}>
+            <button style={S.tabBtn} onClick={() => setShowForm(showForm==="add_type"?"none":"add_type")}>
+              {showForm==="add_type" ? "✕" : "＋ 種別を追加"}
+            </button>
+            <button style={S.addBtn} onClick={() => {
+              // 直接追加: 最初の種別をデフォルトに
+              if (mediaTypes.length > 0) { setActiveType(mediaTypes[0]); setLayer("type_detail"); setShowForm("item"); }
+            }}>＋ 出演を追加</button>
+          </div>
+        }
+      />
+
+      {/* Summary */}
+      <div style={S.statsBar}>
+        <div style={S.statItem}>
+          <span style={S.statLabel}>総出演数</span>
+          <span style={S.statCount}>{mediaItems.length}件</span>
+        </div>
+        {mediaTypes.map((t) => {
+          const cnt = typeItems(t).length;
+          return cnt > 0 ? (
+            <div key={t.id} style={S.statItem}>
+              <span style={{ ...S.statDot, background:t.color }} />
+              <span style={S.statLabel}>{t.label}</span>
+              <span style={S.statCount}>{cnt}</span>
+            </div>
+          ) : null;
+        })}
+      </div>
+
+      {/* 種別追加フォーム */}
+      {showForm==="add_type" && (
+        <div style={{ ...S.formCard, marginBottom:20 }}>
+          <div style={MS.formSectionLabel}>種別を追加</div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>種別名 *</label>
+              <input style={S.inputBase} placeholder="YouTube / 映画 / イベント..." value={typeForm.label}
+                onChange={(e) => setTypeForm((p) => ({ ...p, label:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>アイコン</label>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {TYPE_ICONS.map((ic) => (
+                  <button key={ic} style={{ ...MS.iconBtn, ...(typeForm.icon===ic ? MS.iconBtnActive : {}) }}
+                    onClick={() => setTypeForm((p) => ({ ...p, icon:ic }))}>{ic}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>カラー</label>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {TYPE_COLORS.map((c) => (
+                <button key={c} style={{ ...MS.colorSwatch, background:c, ...(typeForm.color===c ? MS.colorSwatchActive : {}) }}
+                  onClick={() => setTypeForm((p) => ({ ...p, color:c }))} />
+              ))}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!typeForm.label ? S.saveBtnOff : {}) }} onClick={addType}>追加する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* 種別カード一覧 */}
+      {mediaTypes.length === 0 ? <EmptyState /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {mediaTypes.map((type) => {
+            const items = typeItems(type);
+            const recent = items.slice(0, 3);
+            return (
+              <div key={type.id} style={MS.typeCard}
+                onClick={() => { setActiveType(type); setLayer("type_detail"); setSearchQ(""); }}>
+                <div style={{ ...MS.typeCardStripe, background:type.color }} />
+                <div style={{ padding:"14px 16px 14px 20px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ ...MS.typeIcon, background:type.color+"22", color:type.color }}>{type.icon}</span>
+                      <span style={{ fontWeight:900, fontSize:17, color:"#1a1a1a" }}>{type.label}</span>
+                      <span style={{ ...S.badge, background:type.color+"22", color:type.color, borderColor:type.color+"44" }}>
+                        {items.length}件
+                      </span>
+                    </div>
+                    <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); confirm("「"+type.label+"」を削除しますか？\n出演記録も全て削除されます。",()=>deleteType(type.id)); }}>🗑</button>
+                  </div>
+                  {recent.length > 0 ? (
+                    <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                      {recent.map((m) => (
+                        <div key={m.id} style={MS.previewRow}>
+                          <span style={{ fontSize:11, color:"#777", minWidth:84 }}>{m.date}</span>
+                          <span style={{ fontSize:13, color:"#222", fontWeight:600 }}>{m.title}</span>
+                          {m.detail && <span style={{ fontSize:11, color:"#666" }}>— {m.detail}</span>}
+                        </div>
+                      ))}
+                      {items.length > 3 && (
+                        <div style={{ fontSize:11, color:"#888", paddingLeft:84 }}>他 {items.length-3} 件…</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize:12, color:"#999" }}>まだ記録なし</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════════
+  //  LAYER: 種別詳細（出演一覧）
+  // ════════════════════════════════
+  if (layer === "type_detail" && activeType) return (
+    <div>
+      {dialog}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("types"); setActiveType(null); setShowForm("none"); }}>📺 メディア出演</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeType.icon} {activeType.label}</span>
+      </div>
+
+      {/* Type header */}
+      <div style={{ ...MS.typeDetailHeader, borderColor:activeType.color+"44" }}>
+        <span style={{ ...MS.typeIcon, fontSize:28, background:activeType.color+"22", color:activeType.color, width:52, height:52, borderRadius:12 }}>{activeType.icon}</span>
+        <div style={{ flex:1 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div style={{ fontSize:20, fontWeight:900, color:"#1a1a1a" }}>{activeType.label}</div>
+            <button style={LS.editBtn} onClick={() => {
+              setEditTypeForm({ ...activeType });
+              setShowForm(showForm==="edit_type"?"none":"edit_type");
+            }}>{showForm==="edit_type" ? "✕" : "✏️ 編集"}</button>
+          </div>
+          <div style={{ fontSize:13, color:"#666", marginTop:4 }}>{typeItems(activeType).length}件の記録</div>
+        </div>
+      </div>
+
+      {/* 種別編集フォーム */}
+      {showForm==="edit_type" && editTypeForm && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={MS.formSectionLabel}>✏️ 種別を編集</div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>種別名 *</label>
+              <input style={S.inputBase} value={editTypeForm.label}
+                onChange={(e) => setEditTypeForm((p) => ({ ...p, label:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>アイコン</label>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                {TYPE_ICONS.map((ic) => (
+                  <button key={ic} style={{ ...MS.iconBtn, ...(editTypeForm.icon===ic ? MS.iconBtnActive : {}) }}
+                    onClick={() => setEditTypeForm((p) => ({ ...p, icon:ic }))}>{ic}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>カラー</label>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {TYPE_COLORS.map((c) => (
+                <button key={c} style={{ ...MS.colorSwatch, background:c, ...(editTypeForm.color===c ? MS.colorSwatchActive : {}) }}
+                  onClick={() => setEditTypeForm((p) => ({ ...p, color:c }))} />
+              ))}
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => { setShowForm("none"); setEditTypeForm(null); }}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!editTypeForm.label ? S.saveBtnOff : {}) }} onClick={saveTypeEdit}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* Search + add */}
+      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
+        <div style={{ ...S.searchBox, flex:1, marginBottom:0 }}>
+          <span>🔍</span>
+          <input style={S.searchInput} placeholder="番組名・#タグで検索..." value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)} />
+          {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+        </div>
+        <button style={S.addBtn} onClick={() => setShowForm(showForm==="item"?"none":"item")}>
+          {showForm==="item" ? "✕ キャンセル" : "＋ 出演を追加"}
+        </button>
+      </div>
+
+      {allItemTags.length > 0 && (
+        <div style={{ ...S.tagRow, marginBottom:14 }}>
+          {allItemTags.slice(0,12).map((t) => (
+            <button key={t} style={{ ...S.hashChip, ...(searchQ===t ? S.hashChipActive : {}) }}
+              onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {/* 出演追加フォーム */}
+      {showForm==="item" && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={{ ...MS.formSectionLabel, color:activeType.color, borderBottomColor:activeType.color+"33" }}>
+            {activeType.icon} {activeType.label}に追加
+          </div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>番組名 / 媒体名 *</label>
+              <input style={S.inputBase} placeholder="MUSIC STATION" value={itemForm.title}
+                onChange={(e) => setItemForm((p) => ({ ...p, title:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>日付</label>
+              <input type="date" style={S.inputBase} value={itemForm.date}
+                onChange={(e) => setItemForm((p) => ({ ...p, date:e.target.value }))} />
+            </div>
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>詳細（コーナー・内容など）</label>
+            <input style={S.inputBase} placeholder="「Remember」生演奏 / ゲスト出演" value={itemForm.detail}
+              onChange={(e) => setItemForm((p) => ({ ...p, detail:e.target.value }))} />
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+            <textarea style={S.textarea} rows={2} value={itemForm.memo}
+              onChange={(e) => setItemForm((p) => ({ ...p, memo:e.target.value }))} />
+            {extractHashtags(itemForm.memo).length > 0 && (
+              <div style={{ ...S.tagWrap, marginTop:6 }}>
+                {extractHashtags(itemForm.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+              </div>
+            )}
+          </div>
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🔗 URL</label>
+            <input type="url" style={S.inputBase} placeholder="https://..." value={itemForm.url}
+              onChange={(e) => setItemForm((p) => ({ ...p, url:e.target.value }))} />
+          </div>
+          <FileUploadRow label="画像" accept="image/*" inputRef={imgRef} files={itemForm.images}
+            onUpload={handleFile} onRemove={removeFile} icon="📷" isImage />
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!itemForm.title ? S.saveBtnOff : {}) }} onClick={addItem}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* 出演一覧 */}
+      {filteredItems.length === 0 && showForm !== "item" ? <EmptyState /> : (
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {filteredItems.map((item) => (
+            <div key={item.id} style={{ ...MS.itemCard, borderLeftColor:activeType.color+"66" }}
+              onClick={() => { setActiveItem(item); setLayer("item_detail"); }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5, flexWrap:"wrap" }}>
+                    <span style={{ fontWeight:800, fontSize:15, color:"#1a1a1a" }}>{item.title}</span>
+                    <span style={S.dateTxt}>{item.date}</span>
+                  </div>
+                  {item.detail && <div style={{ fontSize:12, color:"#555", marginBottom:5 }}>{item.detail}</div>}
+                  {extractHashtags(item.memo).length > 0 && (
+                    <div style={S.tagWrap}>{extractHashtags(item.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}</div>
+                  )}
+                  {item.url && (
+                    <div style={{ fontSize:11, color:"#7ec8ff", marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      🔗 {item.url}
+                    </div>
+                  )}
+                </div>
+                <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); confirm("この出演記録を削除しますか？",()=>deleteItem(item.id)); }}>🗑</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════════════
+  //  LAYER: 出演詳細
+  // ════════════════════════════
+  if (layer === "item_detail" && activeItem) return (
+    <div>
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("types"); setActiveType(null); }}>📺 メディア出演</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("type_detail"); setActiveItem(null); }}>{activeType.icon} {activeType.label}</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeItem.title}</span>
+      </div>
+
+      <div style={S.detailCard}>
+        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background:activeType.color }} />
+        <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+          <h2 style={{ fontSize:18, fontWeight:900, margin:0 }}>{activeItem.title}</h2>
+          <span style={S.dateTxt}>{activeItem.date}</span>
+        </div>
+        <div style={{ display:"flex", gap:8, marginBottom:12, flexWrap:"wrap" }}>
+          <span style={{ ...S.badge, background:activeType.color+"22", color:activeType.color, borderColor:activeType.color+"44" }}>
+            {activeType.icon} {activeType.label}
+          </span>
+          {activeItem.detail && <span style={S.infoBadge}>{activeItem.detail}</span>}
+        </div>
+        {activeItem.memo && (
+          <div style={{ fontSize:14, lineHeight:1.7, color:"#222", whiteSpace:"pre-wrap", marginBottom:12 }}>
+            {activeItem.memo}
+          </div>
+        )}
+        {extractHashtags(activeItem.memo).length > 0 && (
+          <div style={{ ...S.tagWrap, marginBottom:12 }}>
+            {extractHashtags(activeItem.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+          </div>
+        )}
+        {activeItem.url && (
+          <a href={activeItem.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize:13, color:"#7ec8ff", textDecoration:"none", display:"block", marginBottom:12 }}>
+            🔗 {activeItem.url}
+          </a>
+        )}
+        {activeItem.images?.length > 0 && (
+          <div style={S.mediaSection}>
+            <div style={S.sectionTitle}>📷 画像</div>
+            <div style={S.mediaGrid}>{activeItem.images.map((img,i) => <img key={i} src={img.url} style={S.thumb} />)}</div>
+          </div>
+        )}
+        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
+          {showForm==="edit_item" && editMediaItemForm && (
+            <div style={{ ...S.formCard, marginTop:16 }}>
+              <div style={{...MS.formSectionLabel}}>✏️ 出演記録を編集</div>
+              <div style={S.formGrid2}>
+                <div style={S.fieldGroup}><label style={S.fieldLabel}>番組名 / 媒体名</label><input style={S.inputBase} value={editMediaItemForm.title} onChange={(e)=>setEditMediaItemForm((p)=>({...p,title:e.target.value}))}/></div>
+                <div style={S.fieldGroup}><label style={S.fieldLabel}>日付</label><input type="date" style={S.inputBase} value={editMediaItemForm.date} onChange={(e)=>setEditMediaItemForm((p)=>({...p,date:e.target.value}))}/></div>
+              </div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>詳細</label><input style={S.inputBase} value={editMediaItemForm.detail||""} onChange={(e)=>setEditMediaItemForm((p)=>({...p,detail:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>メモ</label><textarea style={S.textarea} rows={2} value={editMediaItemForm.memo} onChange={(e)=>setEditMediaItemForm((p)=>({...p,memo:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>🔗 URL</label><input type="url" style={S.inputBase} value={editMediaItemForm.url||""} onChange={(e)=>setEditMediaItemForm((p)=>({...p,url:e.target.value}))}/></div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                <button style={S.cancelBtn} onClick={()=>setShowForm("none")}>キャンセル</button>
+                <button style={S.saveBtn} onClick={()=>{
+                  setMediaItems((p)=>p.map((m)=>m.id===editMediaItemForm.id?{...editMediaItemForm}:m));
+                  setActiveItem(editMediaItemForm); setShowForm("none");
+                }}>保存する ✓</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:20 }}>
+            {dialog}
+            <button style={LS.editBtn} onClick={()=>{setEditMediaItemForm({...activeItem});setShowForm(showForm==="edit_item"?"none":"edit_item");}}>
+              {showForm==="edit_item"?"✕ キャンセル":"✏️ 編集"}
+            </button>
+            <button style={S.dangerBtn} onClick={() => confirm("この出演記録を削除しますか？",()=>deleteItem(activeItem.id))}>🗑 削除する</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+// Media-page-specific styles
+const MS = {
+  formSectionLabel: { fontSize:11, fontWeight:800, color:"#1565c0", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #90caf9" },
+  typeCard:         { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, overflow:"hidden", cursor:"pointer", position:"relative", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  typeCardStripe:   { position:"absolute", top:0, left:0, width:4, height:"100%", borderRadius:"12px 0 0 12px" },
+  typeIcon:         { width:40, height:40, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 },
+  previewRow:       { display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" },
+  typeDetailHeader: { display:"flex", alignItems:"center", gap:14, background:"rgba(255,255,255,.04)", border:"1px solid", borderRadius:12, padding:"16px 20px", marginBottom:16 },
+  itemCard:         { background:"#fff", border:"1px solid #ddd8cc", borderLeft:"3px solid", borderRadius:10, padding:"14px 16px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  iconBtn:          { background:"#f9f7f2", border:"1px solid #ddd8cc", borderRadius:6, width:36, height:36, fontSize:18, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" },
+  iconBtnActive:    { background:"#e8f5e9", borderColor:"#1e7e34" },
+  colorSwatch:      { width:28, height:28, borderRadius:"50%", border:"2px solid transparent", cursor:"pointer", flexShrink:0 },
+  colorSwatchActive:{ border:"2px solid #fff", boxShadow:"0 0 0 2px rgba(255,255,255,.3)" },
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  MEMBERS PAGE  — FC「WANIMA MEMBERS」コンテンツ管理
+//  チャンネル（親）→ エントリー（子）の2層構造
+// ═══════════════════════════════════════════════════════════════
+
+function MembersPage({ fcChannels, setFcChannels, fcEntries, setFcEntries }) {
+  const [layer,          setLayer]         = useState("channels");
+  const [activeChannel,  setActiveChannel] = useState(null);
+  const [activeEntry,    setActiveEntry]   = useState(null);
+  const [showForm,       setShowForm]      = useState("none"); // "none"|"entry"|"edit_channel"|"monthly"|"edit_entry"
+  const [searchQ,        setSearchQ]       = useState("");
+  const [editEntryForm,  setEditEntryForm]  = useState(null);
+  const [filterGroup,    setFilterGroup]   = useState("all"); // "all"|"single"|"monthly"
+  const [confirm,        dialog]           = useConfirm();
+
+  const imgRef = useRef();
+
+  // ── Entry form ──
+  const emptyEntry = { title:"", date:today(), episode:"", memo:"", url:"", images:[], groupType:"single" };
+  const [entryForm,    setEntryForm]    = useState(emptyEntry);
+  const [editChanForm, setEditChanForm] = useState(null);
+
+  // ── Channel edit handlers ──
+  const saveChanEdit = () => {
+    if (!editChanForm.label) return;
+    setFcChannels((p) => p.map((ch) => ch.id === editChanForm.id ? { ...editChanForm } : ch));
+    setActiveChannel(editChanForm);
+    setShowForm("none"); setEditChanForm(null);
+  };
+
+  // ── Entry handlers ──
+  const addEntry = () => {
+    if (!entryForm.title) return;
+    setFcEntries((p) => [{ id:Date.now(), channelId:activeChannel.id, ...entryForm }, ...p]);
+    setEntryForm(emptyEntry);
+    setShowForm("none");
+  };
+  const deleteEntry = (id) => {
+    setFcEntries((p) => p.filter((e) => e.id !== id));
+    setLayer("channel_detail"); setActiveEntry(null);
+  };
+  const handleFile = async (e) => {
+    const d = await filesToDataURLs(e.target.files);
+    setEntryForm((p) => ({ ...p, images:[...p.images, ...d] }));
+    e.target.value = "";
+  };
+  const removeFile = (i) => setEntryForm((p) => ({ ...p, images:p.images.filter((_,j) => j!==i) }));
+
+  const channelEntries = (ch) => fcEntries
+    .filter((e) => e.channelId === ch.id)
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  const filteredEntries = activeChannel
+    ? channelEntries(activeChannel).filter((e) => {
+        const mg = filterGroup === "all" || e.groupType === filterGroup;
+        const q  = searchQ.toLowerCase();
+        const mq = !q || e.title.toLowerCase().includes(q) || e.memo.toLowerCase().includes(q) ||
+          extractHashtags(e.memo).some((t) => t.toLowerCase().includes(q));
+        return mg && mq;
+      })
+    : [];
+
+  const allTags = activeChannel
+    ? [...new Set(channelEntries(activeChannel).flatMap((e) => extractHashtags(e.memo)))]
+    : [];
+
+  // monthly grouping
+  const monthlyGroups = (() => {
+    if (!activeChannel) return {};
+    return filteredEntries.reduce((acc, e) => {
+      const ym = e.date.slice(0,7);
+      if (!acc[ym]) acc[ym] = [];
+      acc[ym].push(e);
+      return acc;
+    }, {});
+  })();
+
+  // ════════════════════════════════
+  //  LAYER: チャンネル一覧
+  // ════════════════════════════════
+  if (layer === "channels") return (
+    <div>
+      {dialog}
+      <PageHeader icon="🎤" title="WANIMA MEMBERS" subtitle="FC限定コンテンツのアーカイブ" />
+
+      {/* Summary */}
+      <div style={S.statsBar}>
+        <div style={S.statItem}>
+          <span style={S.statLabel}>総アーカイブ数</span>
+          <span style={S.statCount}>{fcEntries.length}件</span>
+        </div>
+        {fcChannels.map((ch) => {
+          const cnt = channelEntries(ch).length;
+          return cnt > 0 ? (
+            <div key={ch.id} style={S.statItem}>
+              <span style={{ ...S.statDot, background:ch.color }} />
+              <span style={S.statLabel}>{ch.label}</span>
+              <span style={S.statCount}>{cnt}</span>
+            </div>
+          ) : null;
+        })}
+      </div>
+
+      {/* Channel cards */}
+      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+        {fcChannels.map((ch) => {
+          const entries = channelEntries(ch);
+          const recent  = entries.slice(0, 3);
+          return (
+            <div key={ch.id} style={FCG.chanCard}
+              onClick={() => { setActiveChannel(ch); setLayer("channel_detail"); setSearchQ(""); setFilterGroup("all"); }}>
+              <div style={{ ...FCG.chanStripe, background:ch.color }} />
+              <div style={{ padding:"16px 18px 16px 22px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ ...FCG.chanIcon, background:ch.color+"22", color:ch.color }}>{ch.icon}</span>
+                    <div>
+                      <div style={{ fontWeight:900, fontSize:17, color:"#1a1a1a", letterSpacing:"0.02em" }}>{ch.label}</div>
+                      {ch.description && <div style={{ fontSize:11, color:"#666", marginTop:2 }}>{ch.description}</div>}
+                    </div>
+                    <span style={{ ...S.badge, background:ch.color+"22", color:ch.color, borderColor:ch.color+"44" }}>
+                      {entries.length}件
+                    </span>
+                  </div>
+                </div>
+                {recent.length > 0 ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {recent.map((e) => (
+                      <div key={e.id} style={FCG.previewRow}>
+                        <span style={{ fontSize:11, color:"#777", minWidth:84, flexShrink:0 }}>{e.date}</span>
+                        {e.episode && <span style={{ fontSize:10, color:ch.color, fontWeight:700, minWidth:28, flexShrink:0 }}>#{e.episode}</span>}
+                        <span style={{ fontSize:13, color:"#222", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{e.title}</span>
+                      </div>
+                    ))}
+                    {entries.length > 3 && (
+                      <div style={{ fontSize:11, color:"#888", paddingLeft:84 }}>他 {entries.length-3} 件…</div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:12, color:"#999" }}>まだ記録なし</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // ════════════════════════════════════
+  //  LAYER: チャンネル詳細（エントリー一覧）
+  // ════════════════════════════════════
+  if (layer === "channel_detail" && activeChannel) return (
+    <div>
+      {dialog}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("channels"); setActiveChannel(null); setShowForm("none"); }}>
+          🎤 MEMBERS
+        </button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeChannel.icon} {activeChannel.label}</span>
+      </div>
+
+      {/* Channel header */}
+      <div style={{ ...FCG.chanDetailHeader, borderColor:activeChannel.color+"44" }}>
+        <span style={{ ...FCG.chanIcon, fontSize:28, background:activeChannel.color+"22", color:activeChannel.color, width:54, height:54, borderRadius:13, flexShrink:0 }}>
+          {activeChannel.icon}
+        </span>
+        <div style={{ flex:1 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+            <div style={{ fontSize:20, fontWeight:900, color:"#1a1a1a" }}>{activeChannel.label}</div>
+            <button style={LS.editBtn} onClick={() => {
+              setEditChanForm({ ...activeChannel });
+              setShowForm(showForm==="edit_channel"?"none":"edit_channel");
+            }}>{showForm==="edit_channel" ? "✕" : "✏️ 編集"}</button>
+          </div>
+          {activeChannel.description && (
+            <div style={{ fontSize:12, color:"#666", marginTop:4 }}>{activeChannel.description}</div>
+          )}
+          <div style={{ fontSize:12, color:"#777", marginTop:6 }}>
+            {channelEntries(activeChannel).length}件のアーカイブ
+          </div>
+        </div>
+      </div>
+
+      {/* Channel edit form */}
+      {showForm==="edit_channel" && editChanForm && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={{ ...FCG.formLabel, color:activeChannel.color, borderBottomColor:activeChannel.color+"33" }}>✏️ チャンネル情報を編集</div>
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>チャンネル名</label>
+              <input style={S.inputBase} value={editChanForm.label}
+                onChange={(e) => setEditChanForm((p) => ({ ...p, label:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>説明</label>
+              <input style={S.inputBase} value={editChanForm.description}
+                onChange={(e) => setEditChanForm((p) => ({ ...p, description:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>アイコン</label>
+              <input style={S.inputBase} value={editChanForm.icon}
+                onChange={(e) => setEditChanForm((p) => ({ ...p, icon:e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => { setShowForm("none"); setEditChanForm(null); }}>キャンセル</button>
+            <button style={S.saveBtn} onClick={saveChanEdit}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* Search + filter + add */}
+      <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
+        <div style={{ ...S.searchBox, flex:1, marginBottom:0 }}>
+          <span>🔍</span>
+          <input style={S.searchInput} placeholder="タイトル・#タグで検索..." value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)} />
+          {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+        </div>
+        <button style={S.addBtn} onClick={() => setShowForm(showForm==="entry"?"none":"entry")}>
+          {showForm==="entry" ? "✕ キャンセル" : "＋ 追加"}
+        </button>
+      </div>
+
+      {/* Group type filter */}
+      <div style={{ ...S.filterRow, marginBottom:12 }}>
+        {[{id:"all",label:"ALL"},{id:"single",label:"単話"},{id:"monthly",label:"月まとめ"}].map((f) => (
+          <button key={f.id}
+            style={{ ...S.chip, ...(filterGroup===f.id ? { borderColor:activeChannel.color, background:activeChannel.color+"22", color:activeChannel.color } : {}) }}
+            onClick={() => setFilterGroup(f.id)}>{f.label}</button>
+        ))}
+      </div>
+
+      {/* Hashtag quick filters */}
+      {allTags.length > 0 && (
+        <div style={{ ...S.tagRow, marginBottom:14 }}>
+          {allTags.slice(0,12).map((t) => (
+            <button key={t} style={{ ...S.hashChip, ...(searchQ===t ? S.hashChipActive : {}) }}
+              onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Entry add form */}
+      {showForm==="entry" && (
+        <div style={{ ...S.formCard, marginBottom:16 }}>
+          <div style={{ ...FCG.formLabel, color:activeChannel.color, borderBottomColor:activeChannel.color+"33" }}>
+            {activeChannel.icon} {activeChannel.label}に追加
+          </div>
+
+          {/* groupType switch */}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>記録タイプ</label>
+            <div style={{ display:"flex", gap:8 }}>
+              {[{id:"single",label:"🎯 単話・単記事"},{id:"monthly",label:"📅 月まとめ"}].map((gt) => (
+                <button key={gt.id}
+                  style={{ ...S.typeBtn, ...(entryForm.groupType===gt.id ? { borderColor:activeChannel.color, background:activeChannel.color+"22", color:activeChannel.color } : {}) }}
+                  onClick={() => setEntryForm((p) => ({ ...p, groupType:gt.id }))}>
+                  {gt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={S.formGrid2}>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>タイトル *</label>
+              <input style={S.inputBase}
+                placeholder={entryForm.groupType==="monthly" ? "2025年5月まとめ" : "エピソードタイトル"}
+                value={entryForm.title}
+                onChange={(e) => setEntryForm((p) => ({ ...p, title:e.target.value }))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>日付</label>
+              <input type="date" style={S.inputBase} value={entryForm.date}
+                onChange={(e) => setEntryForm((p) => ({ ...p, date:e.target.value }))} />
+            </div>
+            {entryForm.groupType==="single" && (
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>エピソード番号 <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+                <input style={S.inputBase} placeholder="42" value={entryForm.episode}
+                  onChange={(e) => setEntryForm((p) => ({ ...p, episode:e.target.value }))} />
+              </div>
+            )}
+          </div>
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🔗 URL</label>
+            <input type="url" style={S.inputBase} placeholder="https://..." value={entryForm.url}
+              onChange={(e) => setEntryForm((p) => ({ ...p, url:e.target.value }))} />
+          </div>
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+            <textarea style={S.textarea} rows={3} value={entryForm.memo}
+              onChange={(e) => setEntryForm((p) => ({ ...p, memo:e.target.value }))} />
+            {extractHashtags(entryForm.memo).length > 0 && (
+              <div style={{ ...S.tagWrap, marginTop:6 }}>
+                {extractHashtags(entryForm.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+              </div>
+            )}
+          </div>
+
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>📷 画像</label>
+            <input type="file" accept="image/*" multiple ref={imgRef} style={{ display:"none" }} onChange={handleFile} />
+            <button style={S.uploadBtn} onClick={() => imgRef.current.click()}>📷 画像を選択</button>
+            {entryForm.images.length > 0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                {entryForm.images.map((img, i) => (
+                  <div key={i} style={{ position:"relative", width:80, height:60 }}>
+                    <img src={img.url} alt="" style={{ width:80, height:60, objectFit:"cover", borderRadius:5, border:"1px solid rgba(255,255,255,.1)", display:"block" }} />
+                    <button style={S.removeBtn} onClick={() => removeFile(i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+            <button style={S.cancelBtn} onClick={() => setShowForm("none")}>キャンセル</button>
+            <button style={{ ...S.saveBtn, ...(!entryForm.title ? S.saveBtnOff : {}) }} onClick={addEntry}>保存する ✓</button>
+          </div>
+        </div>
+      )}
+
+      {/* Entry list */}
+      {filteredEntries.length === 0 && showForm !== "entry" ? <EmptyState /> : filterGroup === "monthly" ? (
+        // ── Monthly grouped view ──
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+          {Object.entries(monthlyGroups).sort((a,b) => b[0].localeCompare(a[0])).map(([ym, entries]) => {
+            const [y, m] = ym.split("-");
+            return (
+              <div key={ym}>
+                <div style={FCG.monthHeader}>
+                  <span style={{ ...FCG.monthDot, background:activeChannel.color }} />
+                  {y}年{parseInt(m)}月
+                  <span style={{ fontSize:12, color:"#777", marginLeft:8 }}>{entries.length}件</span>
+                </div>
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  {entries.map((e) => <EntryCard key={e.id} entry={e} channel={activeChannel}
+                    onClick={() => { setActiveEntry(e); setLayer("entry_detail"); }}
+                    onDelete={(id) => confirm("このエントリーを削除しますか？", () => deleteEntry(id))} />)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        // ── Single list view ──
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {filteredEntries.map((e) => <EntryCard key={e.id} entry={e} channel={activeChannel}
+            onClick={() => { setActiveEntry(e); setLayer("entry_detail"); }}
+            onDelete={(id) => confirm("このエントリーを削除しますか？", () => deleteEntry(id))} />)}
+        </div>
+      )}
+    </div>
+  );
+
+  // ════════════════════
+  //  LAYER: エントリー詳細
+  // ════════════════════
+  if (layer === "entry_detail" && activeEntry) return (
+    <div>
+      {dialog}
+      <div style={LS.breadcrumb}>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("channels"); setActiveChannel(null); }}>🎤 MEMBERS</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <button style={LS.breadcrumbBtn} onClick={() => { setLayer("channel_detail"); setActiveEntry(null); }}>{activeChannel.icon} {activeChannel.label}</button>
+        <span style={LS.breadcrumbSep}>›</span>
+        <span style={LS.breadcrumbCurrent}>{activeEntry.title}</span>
+      </div>
+
+      <div style={S.detailCard}>
+        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background:activeChannel.color }} />
+
+        <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+              {activeEntry.episode && (
+                <span style={{ ...S.badge, background:activeChannel.color+"22", color:activeChannel.color, borderColor:activeChannel.color+"44", fontSize:12 }}>
+                  #{activeEntry.episode}
+                </span>
+              )}
+              <span style={{ ...S.badge, background:"rgba(255,255,255,.07)", color:"#555", borderColor:"rgba(255,255,255,.1)", fontSize:10 }}>
+                {activeEntry.groupType==="monthly" ? "📅 月まとめ" : "🎯 単話"}
+              </span>
+            </div>
+            <h2 style={{ fontSize:18, fontWeight:900, margin:"0 0 6px", color:"#1a1a1a" }}>{activeEntry.title}</h2>
+          </div>
+          <span style={{ ...S.dateTxt, fontSize:12 }}>{activeEntry.date}</span>
+        </div>
+
+        <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+          <span style={{ ...S.badge, background:activeChannel.color+"22", color:activeChannel.color, borderColor:activeChannel.color+"44" }}>
+            {activeChannel.icon} {activeChannel.label}
+          </span>
+        </div>
+
+        {activeEntry.url && (
+          <div style={S.detailUrlBox}>
+            <div style={S.sectionTitle}>🔗 リンク</div>
+            <a href={activeEntry.url} target="_blank" rel="noopener noreferrer"
+              style={{ display:"block", fontSize:13, color:"#7ec8ff", textDecoration:"none", wordBreak:"break-all", lineHeight:1.5, marginBottom:8 }}>
+              {activeEntry.url}
+            </a>
+            <button style={S.copyBtn} onClick={() => navigator.clipboard.writeText(activeEntry.url)}>📋 コピー</button>
+          </div>
+        )}
+
+        {activeEntry.memo && (
+          <div style={{ fontSize:14, lineHeight:1.8, color:"#1a1a1a", whiteSpace:"pre-wrap", marginTop:14 }}>
+            {activeEntry.memo}
+          </div>
+        )}
+        {extractHashtags(activeEntry.memo).length > 0 && (
+          <div style={{ ...S.tagWrap, marginTop:10 }}>
+            {extractHashtags(activeEntry.memo).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}
+          </div>
+        )}
+
+        {activeEntry.images?.length > 0 && (
+          <div style={S.mediaSection}>
+            <div style={S.sectionTitle}>📷 画像</div>
+            <div style={S.mediaGrid}>
+              {activeEntry.images.map((img, i) => <img key={i} src={img.url} style={S.thumb} />)}
+            </div>
+          </div>
+        )}
+
+        {showForm==="edit_entry" && editEntryForm && (
+          <div style={{ ...S.formCard, marginTop:16 }}>
+            <div style={{ ...FCG.formLabel, color:activeChannel.color, borderBottomColor:activeChannel.color+"33" }}>✏️ エントリーを編集</div>
+            <div style={S.formGrid2}>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>タイトル</label><input style={S.inputBase} value={editEntryForm.title} onChange={(e)=>setEditEntryForm((p)=>({...p,title:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>日付</label><input type="date" style={S.inputBase} value={editEntryForm.date} onChange={(e)=>setEditEntryForm((p)=>({...p,date:e.target.value}))}/></div>
+              <div style={S.fieldGroup}><label style={S.fieldLabel}>エピソード番号</label><input style={S.inputBase} value={editEntryForm.episode||""} onChange={(e)=>setEditEntryForm((p)=>({...p,episode:e.target.value}))}/></div>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>記録タイプ</label>
+              <div style={{display:"flex",gap:8}}>
+                {[{id:"single",label:"🎯 単話"},{id:"monthly",label:"📅 月まとめ"}].map((gt)=>(
+                  <button key={gt.id} style={{...S.typeBtn,...(editEntryForm.groupType===gt.id?{borderColor:activeChannel.color,background:activeChannel.color+"22",color:activeChannel.color}:{})}}
+                    onClick={()=>setEditEntryForm((p)=>({...p,groupType:gt.id}))}>{gt.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={S.fieldGroup}><label style={S.fieldLabel}>🔗 URL</label><input type="url" style={S.inputBase} value={editEntryForm.url||""} onChange={(e)=>setEditEntryForm((p)=>({...p,url:e.target.value}))}/></div>
+            <div style={S.fieldGroup}><label style={S.fieldLabel}>メモ</label><textarea style={S.textarea} rows={3} value={editEntryForm.memo} onChange={(e)=>setEditEntryForm((p)=>({...p,memo:e.target.value}))}/></div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button style={S.cancelBtn} onClick={()=>setShowForm("none")}>キャンセル</button>
+              <button style={S.saveBtn} onClick={()=>{
+                setFcEntries((p)=>p.map((e)=>e.id===editEntryForm.id?{...editEntryForm}:e));
+                setActiveEntry(editEntryForm); setShowForm("none");
+              }}>保存する ✓</button>
+            </div>
+          </div>
+        )}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:20 }}>
+          <button style={LS.editBtn} onClick={()=>{setEditEntryForm({...activeEntry});setShowForm(showForm==="edit_entry"?"none":"edit_entry");}}>
+            {showForm==="edit_entry"?"✕ キャンセル":"✏️ 編集"}
+          </button>
+          <button style={S.dangerBtn} onClick={() => confirm("このエントリーを削除しますか？", () => deleteEntry(activeEntry.id))}>
+            🗑 削除する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return null;
+}
+
+// ── EntryCard subcomponent ──
+function EntryCard({ entry, channel, onClick, onDelete }) {
+  const tags = extractHashtags(entry.memo);
+  return (
+    <div style={{ ...FCG.entryCard, borderLeftColor:channel.color+"66" }} onClick={onClick}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4, flexWrap:"wrap" }}>
+            {entry.episode && (
+              <span style={{ fontSize:11, fontWeight:800, color:channel.color }}>#{entry.episode}</span>
+            )}
+            <span style={{ fontWeight:700, fontSize:14, color:"#1a1a1a", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.title}</span>
+            <span style={{ ...S.badgeGray, fontSize:9 }}>{entry.groupType==="monthly"?"月まとめ":"単話"}</span>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom: tags.length||entry.url ? 6 : 0 }}>
+            <span style={S.dateTxt}>{entry.date}</span>
+            {entry.images?.length > 0 && <span style={S.mediaBadge}>🖼 {entry.images.length}</span>}
+            {entry.url && <span style={{ fontSize:10, color:"#7ec8ff", opacity:.7 }}>🔗</span>}
+          </div>
+          {tags.length > 0 && (
+            <div style={S.tagWrap}>{tags.slice(0,4).map((t) => <span key={t} style={S.tagPill}>{t}</span>)}</div>
+          )}
+        </div>
+        <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); onDelete(entry.id); }}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
+// FC-page-specific styles
+const FCG = {
+  chanCard:        { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, overflow:"hidden", cursor:"pointer", position:"relative", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  chanStripe:      { position:"absolute", top:0, left:0, width:4, height:"100%", borderRadius:"12px 0 0 12px" },
+  chanIcon:        { width:40, height:40, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 },
+  previewRow:      { display:"flex", alignItems:"baseline", gap:6, overflow:"hidden" },
+  chanDetailHeader:{ display:"flex", alignItems:"center", gap:14, background:"#fff", border:"1px solid", borderRadius:12, padding:"16px 20px", marginBottom:16, boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  formLabel:       { fontSize:11, fontWeight:800, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid" },
+  entryCard:       { background:"#fff", border:"1px solid #ddd8cc", borderLeft:"3px solid", borderRadius:10, padding:"12px 14px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  monthHeader:     { display:"flex", alignItems:"center", gap:8, fontSize:14, fontWeight:800, color:"#555", marginBottom:10, paddingBottom:8, borderBottom:"1px solid #ddd8cc" },
+  monthDot:        { width:8, height:8, borderRadius:"50%", flexShrink:0 },
+};
+
+//  SHARED COMPONENTS
+// ═══════════════════════════════════════════════════════════════
+
+function FileUploadRow({ label, accept, inputRef, files, onUpload, onRemove, icon, isImage }) {
+  return (
+    <div style={S.fieldGroup}>
+      <label style={S.fieldLabel}>{icon} {label}</label>
+      <input type="file" accept={accept} multiple ref={inputRef} style={{ display:"none" }} onChange={onUpload} />
+      <button style={S.uploadBtn} onClick={()=>inputRef.current.click()}>{icon} {label}を選択</button>
+      {files.length>0 && (
+        <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+          {files.map((f,i)=>(
+            <div key={i} style={{ position:"relative", width:72, height:54 }}>
+              {isImage
+                ? <img src={f.url} alt={f.name} style={{ width:72, height:54, objectFit:"cover", borderRadius:5, border:"1px solid rgba(255,255,255,.1)" }}/>
+                : <div style={{ width:72, height:54, background:"rgba(255,255,255,.06)", borderRadius:5, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🎬</div>
+              }
+              <button style={S.removeBtn} onClick={()=>onRemove(i)}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CONFIRM DIALOG
+// ═══════════════════════════════════════════════════════════════
+
+function ConfirmDialog({ message, onConfirm, onCancel }) {
+  return (
+    <div style={CD.overlay} onClick={onCancel}>
+      <div style={CD.dialog} onClick={(e) => e.stopPropagation()}>
+        <div style={CD.icon}>🗑</div>
+        <div style={CD.message}>{message}</div>
+        <div style={CD.actions}>
+          <button style={CD.cancelBtn} onClick={onCancel}>キャンセル</button>
+          <button style={CD.confirmBtn} onClick={onConfirm}>削除する</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function useConfirm() {
+  const [state, setState] = useState(null); // { message, onConfirm }
+  const confirm = (message, onConfirm) => setState({ message, onConfirm });
+  const dialog = state ? (
+    <ConfirmDialog
+      message={state.message}
+      onConfirm={() => { state.onConfirm(); setState(null); }}
+      onCancel={() => setState(null)}
+    />
+  ) : null;
+  return [confirm, dialog];
+}
+
+const CD = {
+  overlay:    { position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(4px)" },
+  dialog:     { background:"#fff", border:"1px solid #ef9a9a", borderRadius:14, padding:"28px 28px 22px", maxWidth:320, width:"90%", textAlign:"center", boxShadow:"0 8px 40px rgba(0,0,0,.15)" },
+  icon:       { fontSize:32, marginBottom:12 },
+  message:    { fontSize:14, color:"#333", lineHeight:1.7, marginBottom:22 },
+  actions:    { display:"flex", gap:10, justifyContent:"center" },
+  cancelBtn:  { background:"#f5f2eb", border:"1px solid #ddd8cc", color:"#555", borderRadius:8, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
+  confirmBtn: { background:"#b71c1c", border:"none", color:"#fff", borderRadius:8, padding:"10px 22px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 2px 8px rgba(183,28,28,.3)" },
+};
+
+function EmptyState() {
+  return (
+    <div style={{ textAlign:"center", padding:"60px 20px", opacity:.35 }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>🎵</div>
+      <div style={{ fontSize:15 }}>まだデータがありません</div>
+    </div>
+  );
+}
+
+function today() { return new Date().toISOString().slice(0,10); }
+
+// ═══════════════════════════════════════════════════════════════
+//  STYLES
+// ═══════════════════════════════════════════════════════════════
+
+const loadingBarStyle = {
+  width: 160, height: 3, background: "#ddd8cc", borderRadius: 2, overflow: "hidden",
+  position: "relative", isolation: "isolate",
+};
+
+const S = {
+  // ── Design tokens (Rasta light theme) ──
+  // BG: #f5f2eb (warm parchment), Surface: #fff, Border: #ddd8cc
+  // Primary=green #1e7e34, Accent1=yellow #c8960a, Accent2=red #b71c1c
+  // Text: #1a1a1a, Muted: #666
+
+  // layout
+  root:        { minHeight:"100vh", background:"#f5f2eb", color:"#1a1a1a", fontFamily:"'Noto Sans JP','Hiragino Kaku Gothic ProN',sans-serif", position:"relative", display:"flex", flexDirection:"column" },
+  noise:       { display:"none" },
+
+  // topbar
+  topbar:      { position:"sticky", top:0, zIndex:200, background:"#fff", backdropFilter:"blur(8px)", borderBottom:"3px solid transparent", borderImage:"linear-gradient(90deg,#b71c1c,#c8960a,#1e7e34) 1", boxShadow:"0 2px 12px rgba(0,0,0,.08)", flexShrink:0 },
+  topbarInner: { padding:"12px 20px", display:"flex", alignItems:"center", gap:16 },
+  hamburger:   { background:"transparent", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", gap:5, padding:"4px 6px", flexShrink:0 },
+  hamLine:     { display:"block", width:22, height:2, background:"#1a1a1a", borderRadius:2, transition:"all .2s" },
+  logo:        { display:"flex", alignItems:"center", gap:4 },
+  logoW:       { fontSize:28, fontWeight:900, color:"#b71c1c", lineHeight:1, fontFamily:"Impact,'Arial Black',sans-serif" },
+  logoRest:    { fontSize:24, fontWeight:900, color:"#1a1a1a", lineHeight:1, fontFamily:"Impact,'Arial Black',sans-serif", letterSpacing:"0.12em" },
+  logoSub:     { fontSize:9, fontWeight:700, color:"#1e7e34", background:"#e8f5e9", border:"1px solid #a5d6a7", borderRadius:3, padding:"2px 5px", letterSpacing:"0.1em", alignSelf:"flex-end", marginBottom:2 },
+
+  // body / sidebar
+  body:        { display:"flex", flex:1, position:"relative", zIndex:1, overflow:"hidden" },
+  sidebar:     { background:"#fff", borderRight:"1px solid #ddd8cc", overflow:"hidden", transition:"width .22s ease, min-width .22s ease", flexShrink:0 },
+  sidebarInner:{ width:220, display:"flex", flexDirection:"column", height:"100%", padding:"20px 0" },
+  sideSection: { flex:1 },
+  sideSectionLabel: { fontSize:9, fontWeight:700, color:"#999", letterSpacing:"0.15em", textTransform:"uppercase", padding:"0 18px 10px" },
+  sideItem:    { display:"flex", alignItems:"center", gap:10, width:"100%", background:"transparent", border:"none", color:"#666", cursor:"pointer", padding:"10px 18px", fontSize:13, fontWeight:600, fontFamily:"inherit", textAlign:"left", position:"relative", transition:"all .12s" },
+  sideItemActive: { background:"#e8f5e9", color:"#1e7e34" },
+  sideIcon:    { fontSize:16, width:20, textAlign:"center", flexShrink:0 },
+  sideActiveDot: { position:"absolute", right:0, top:"50%", transform:"translateY(-50%)", width:3, height:24, background:"#1e7e34", borderRadius:"2px 0 0 2px" },
+  sideFooter:  { padding:"16px 18px", borderTop:"1px solid #eee", marginTop:"auto" },
+  sideFooterText: { fontSize:10, fontWeight:700, color:"#bbb", letterSpacing:"0.08em" },
+  sideFooterSub:  { fontSize:9, color:"#ccc", marginTop:2 },
+
+  // main
+  main:        { flex:1, overflow:"auto", padding:"24px 24px 40px" },
+
+  // page header
+  pageHeader:  { display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:22, flexWrap:"wrap", gap:12 },
+  pageHeaderTop: { display:"flex", alignItems:"center", gap:10, marginBottom:4 },
+  pageHeaderIcon: { fontSize:22 },
+  pageTitle:   { fontSize:22, fontWeight:900, margin:0, letterSpacing:"0.04em", color:"#1a1a1a" },
+  pageSubtitle:{ fontSize:12, color:"#888", margin:0 },
+
+  // buttons — rasta palette
+  addBtn:      { background:"#1e7e34", border:"none", color:"#fff", borderRadius:7, padding:"8px 16px", fontSize:12, fontWeight:800, cursor:"pointer", fontFamily:"inherit", letterSpacing:"0.04em", boxShadow:"0 2px 8px rgba(30,126,52,.3)" },
+  tabBtn:      { background:"transparent", border:"1px solid #ddd8cc", color:"#666", borderRadius:7, padding:"8px 14px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  tabBtnActive:{ background:"#e8f5e9", borderColor:"#1e7e34", color:"#1e7e34" },
+  backBtn:     { background:"transparent", border:"1px solid #ddd8cc", color:"#666", borderRadius:6, padding:"7px 14px", fontSize:12, cursor:"pointer", marginBottom:14, fontFamily:"inherit", fontWeight:600 },
+  cancelBtn:   { background:"transparent", border:"1px solid #ddd8cc", color:"#888", borderRadius:7, padding:"9px 18px", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  saveBtn:     { background:"#1e7e34", border:"none", color:"#fff", borderRadius:7, padding:"9px 22px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 2px 8px rgba(30,126,52,.3)" },
+  saveBtnOff:  { background:"#a5d6a7", cursor:"not-allowed", boxShadow:"none" },
+  dangerBtn:   { background:"#fce4e4", border:"1px solid #ef9a9a", color:"#b71c1c", borderRadius:7, padding:"8px 16px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
+  delBtn:      { background:"transparent", border:"none", cursor:"pointer", fontSize:14, opacity:.35, padding:3 },
+  copyBtn:     { background:"#e3f2fd", border:"1px solid #90caf9", color:"#1565c0", borderRadius:5, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
+  uploadBtn:   { background:"#f9f7f2", border:"2px dashed #c8b870", color:"#7a6a30", borderRadius:7, padding:"9px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  typeBtn:     { background:"#f9f7f2", border:"1px solid #ddd8cc", color:"#555", borderRadius:7, padding:"7px 16px", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  typeBtnActive: { background:"#e8f5e9", borderColor:"#1e7e34", color:"#1e7e34" },
+  calNavBtn:   { background:"#f9f7f2", border:"1px solid #ddd8cc", color:"#1a1a1a", borderRadius:8, width:38, height:38, fontSize:20, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"inherit" },
+  removeBtn:   { position:"absolute", top:-5, right:-5, background:"#b71c1c", border:"none", borderRadius:"50%", width:17, height:17, fontSize:9, color:"#fff", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 },
+
+  // chips / badges
+  chip:        { background:"transparent", border:"1px solid #ddd8cc", color:"#666", borderRadius:20, padding:"4px 11px", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" },
+  chipActive:  { background:"#e8f5e9", borderColor:"#1e7e34", color:"#1e7e34" },
+  badge:       { fontSize:10, fontWeight:700, borderRadius:4, padding:"2px 7px", border:"1px solid" },
+  badgeGray:   { fontSize:10, fontWeight:600, borderRadius:4, padding:"2px 7px", background:"#f0ede6", border:"1px solid #ddd8cc", color:"#666" },
+  infoBadge:   { fontSize:11, background:"#f0ede6", border:"1px solid #ddd8cc", borderRadius:5, padding:"3px 8px", color:"#555" },
+  mediaBadge:  { fontSize:11, color:"#888", background:"#f0ede6", borderRadius:4, padding:"2px 7px" },
+  tagPill:     { fontSize:11, background:"#fff8e1", border:"1px solid #ffe082", color:"#7a5c00", borderRadius:4, padding:"2px 7px", fontWeight:700 },
+  hashChip:    { background:"#fff8e1", border:"1px solid #ffe082", color:"#7a5c00", borderRadius:4, padding:"3px 9px", fontSize:11, cursor:"pointer", fontFamily:"inherit", fontWeight:700 },
+  hashChipActive: { background:"#c8960a", borderColor:"#c8960a", color:"#fff" },
+
+  // text
+  dateTxt:     { fontSize:11, color:"#999", whiteSpace:"nowrap" },
+
+  // stats bar
+  statsBar:    { display:"flex", flexWrap:"wrap", gap:12, marginBottom:16, padding:"12px 16px", background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  statItem:    { display:"flex", alignItems:"center", gap:6, fontSize:12 },
+  statDot:     { width:7, height:7, borderRadius:"50%", flexShrink:0 },
+  statLabel:   { color:"#888", fontSize:11 },
+  statCount:   { fontWeight:800, color:"#1a1a1a", fontSize:13 },
+
+  // search
+  searchBox:   { display:"flex", alignItems:"center", background:"#fff", border:"1px solid #ddd8cc", borderRadius:8, padding:"0 12px", gap:8, marginBottom:10, boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  searchInput: { flex:1, background:"transparent", border:"none", outline:"none", color:"#1a1a1a", fontSize:13, padding:"10px 0", fontFamily:"inherit" },
+  clearBtn:    { background:"transparent", border:"none", color:"#aaa", cursor:"pointer", fontSize:12, padding:4 },
+
+  // filter rows
+  filterRow:   { display:"flex", flexWrap:"wrap", gap:6, marginBottom:8, alignItems:"center" },
+  tagRow:      { display:"flex", flexWrap:"wrap", gap:6, marginBottom:16 },
+  tagWrap:     { display:"flex", flexWrap:"wrap", gap:5, marginBottom:6 },
+
+  // cards
+  cardGrid:    { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:12 },
+  card:        { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, padding:"13px", cursor:"pointer", position:"relative", overflow:"hidden", boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  cardStripe:  { position:"absolute", top:0, left:0, width:3, height:"100%", borderRadius:"10px 0 0 10px" },
+  cardHead:    { display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:7, gap:5, flexWrap:"wrap" },
+  cardMemo:    { fontSize:13, lineHeight:1.55, color:"#333", marginBottom:6, display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical", overflow:"hidden" },
+  cardUrlRow:  { display:"flex", alignItems:"center", gap:5, marginBottom:6, overflow:"hidden" },
+  cardFoot:    { display:"flex", alignItems:"center", justifyContent:"space-between", marginTop:6 },
+  urlTxt:      { fontSize:11, color:"#1565c0", textDecoration:"none", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+
+  // detail
+  detailWrap:  { maxWidth:660, margin:"0 auto" },
+  detailCard:  { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, padding:22, position:"relative", overflow:"hidden", boxShadow:"0 2px 12px rgba(0,0,0,.06)" },
+  detailUrlBox:{ background:"#e3f2fd", border:"1px solid #90caf9", borderRadius:8, padding:"12px 14px", marginTop:12, marginBottom:12 },
+  mediaSection:{ marginTop:16 },
+  mediaGrid:   { display:"flex", flexWrap:"wrap", gap:8 },
+  thumb:       { width:110, height:82, objectFit:"cover", borderRadius:6, border:"1px solid #ddd8cc", background:"#f0ede6" },
+  sectionTitle:{ fontSize:11, fontWeight:700, color:"#aaa", letterSpacing:"0.07em", textTransform:"uppercase", marginBottom:8 },
+  setlistBox:  { background:"#f1f8e9", border:"1px solid #a5d6a7", borderRadius:8, padding:"14px 16px", marginTop:12 },
+
+  // form
+  formCard:    { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, padding:20, boxShadow:"0 1px 6px rgba(0,0,0,.05)" },
+  formGrid2:   { display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:16, marginBottom:4 },
+  fieldGroup:  { marginBottom:16 },
+  fieldLabel:  { display:"block", fontSize:11, fontWeight:700, color:"#888", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:6 },
+  inputBase:   { width:"100%", background:"#faf9f6", border:"1px solid #ddd8cc", borderRadius:7, padding:"9px 11px", fontSize:13, color:"#1a1a1a", fontFamily:"inherit", outline:"none", boxSizing:"border-box" },
+  textarea:    { width:"100%", background:"#faf9f6", border:"1px solid #ddd8cc", borderRadius:7, padding:"10px 11px", fontSize:13, color:"#1a1a1a", fontFamily:"inherit", outline:"none", resize:"vertical", boxSizing:"border-box", lineHeight:1.6 },
+  catBtn:      { background:"#faf9f6", border:"1px solid #ddd8cc", color:"#555", borderRadius:7, padding:"8px 10px", fontSize:11, fontWeight:600, cursor:"pointer", textAlign:"left", fontFamily:"inherit" },
+
+  // calendar
+  calGrid:     { display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:16 },
+  calWD:       { textAlign:"center", fontSize:11, fontWeight:700, padding:"5px 0", letterSpacing:"0.04em" },
+  calCell:     { minHeight:56, padding:"5px 3px", borderRadius:7, border:"1px solid transparent", display:"flex", flexDirection:"column", alignItems:"center", gap:3, background:"#faf9f6" },
+  calCellSel:  { background:"#e8f5e9", border:"1px solid #1e7e34" },
+  calCellToday:{ border:"2px solid #c8960a" },
+  calPanel:    { background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, padding:18, marginBottom:16 },
+  calPostRow:  { background:"#faf9f6", border:"1px solid #ddd8cc", borderLeft:"3px solid #1e7e34", borderRadius:8, padding:"10px 13px", cursor:"pointer" },
+
+  // members (unused now but keep)
+  memberTab:   { background:"#fff", border:"1px solid #ddd8cc", color:"#555", borderRadius:10, padding:"12px 18px", cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:10 },
+  memberAvatar:{ width:90, height:90, borderRadius:16, border:"2px solid", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
+  statCard:    { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, padding:"18px 16px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+};
+
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
