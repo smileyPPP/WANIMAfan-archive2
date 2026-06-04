@@ -68,9 +68,10 @@ const NAV_PAGES = [
 
 const SNS_CATEGORIES = [
   { id: "official_insta", label: "公式 Instagram", icon: "📸", color: "#E1306C", group: "official" },
-  { id: "official_x",     label: "公式 X",          icon: "𝕏",  color: "#e8e8e8", group: "official" },
+  { id: "official_x",     label: "公式 X",          icon: "𝕏",  color: "#1a1a1a", group: "official" },
   { id: "kenta_insta",    label: "KENTA Instagram", icon: "📸", color: "#F77737", group: "kenta" },
-  { id: "kenta_x",        label: "KENTA X",         icon: "𝕏",  color: "#e8e8e8", group: "kenta" },
+  { id: "kenta_x",        label: "KENTA X",         icon: "𝕏",  color: "#1a1a1a", group: "kenta" },
+  { id: "koshin_x",       label: "KO-SHIN X",       icon: "𝕏",  color: "#1a1a1a", group: "koshin" },
 ];
 
 const POST_TYPES = [
@@ -211,6 +212,7 @@ function App() {
   const [fcEntries,  setFcEntries]  = useState(SAMPLE_FC_ENTRIES);
   const [favorites,  setFavorites]  = useState(new Set()); // Set of "type:id"
 
+  // ── Load from storage on mount ──
   useEffect(() => {
     const k = STORAGE_KEYS;
     const sp=storageGet(k.snsPosts), tr=storageGet(k.tours), sh=storageGet(k.shows);
@@ -361,161 +363,523 @@ function PageHeader({ icon, title, subtitle, action }) {
 //  SNS PAGE  (ported + improved)
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+//  SNS PAGE  — インスタ（グリッド＋ストーリー）＋ X
+// ═══════════════════════════════════════════════════════════════
+
+// アカウント定義
+const INSTA_ACCOUNTS = [
+  { id: "official_insta", label: "WANIMA 公式", icon: "📸", color: "#E1306C", avatar: "W" },
+  { id: "kenta_insta",    label: "KENTA",        icon: "📸", color: "#F77737", avatar: "K" },
+];
+const X_ACCOUNTS = [
+  { id: "official_x", label: "WANIMA 公式", icon: "𝕏", color: "#1a1a1a",  avatar: "W" },
+  { id: "kenta_x",    label: "KENTA",       icon: "𝕏", color: "#F77737",  avatar: "K" },
+  { id: "koshin_x",   label: "KO-SHIN",     icon: "𝕏", color: "#4ec9ff",  avatar: "KS" },
+];
+
 function SnsPage({ snsPosts, setSnsPosts, toggleFav, isFav }) {
-  const [subView,    setSubView]    = useState("list"); // list | calendar | add | detail
-  const [selected,   setSelected]   = useState(null);
-  const [searchQ,    setSearchQ]    = useState("");
-  const [filterCat,  setFilterCat]  = useState("all");
-  const [form, setForm] = useState({ category: "official_insta", type: "post", memo: "", date: today(), url: "", images: [], videos: [] });
+  const [tab,       setTab]      = useState("insta");
+  const [instaAcct, setInstaAcct]= useState("official_insta");
+  const [xAcct,     setXAcct]    = useState("official_x");
+  const [subView,   setSubView]  = useState("grid");
+  const [selected,  setSelected] = useState(null);
+  const [searchQ,   setSearchQ]  = useState("");
+  const [form, setForm] = useState({ category:"official_insta", type:"post", memo:"", date:today(), url:"", images:[], videos:[] });
+  const [storyViewer, setStoryViewer] = useState(null);
   const imgRef = useRef(); const vidRef = useRef();
 
   const handleAdd = () => {
     if (!form.memo && !form.url && !form.images.length && !form.videos.length) return;
-    setSnsPosts((p) => [{ id: Date.now(), ...form }, ...p]);
-    setForm({ category: "official_insta", type: "post", memo: "", date: today(), url: "", images: [], videos: [] });
-    setSubView("list");
+    setSnsPosts((p) => [{ id:Date.now(), ...form }, ...p]);
+    setForm({ category: tab==="insta" ? instaAcct : xAcct, type:"post", memo:"", date:today(), url:"", images:[], videos:[] });
+    setSubView(tab==="insta" ? "grid" : "timeline");
   };
-  const handleDelete = (id) => { setSnsPosts((p) => p.filter((x) => x.id !== id)); setSubView("list"); setSelected(null); };
+  const handleDelete = (id) => {
+    setSnsPosts((p) => p.filter((x) => x.id !== id));
+    setSubView(tab==="insta" ? "grid" : "timeline");
+    setSelected(null);
+  };
   const handleFile = async (e, ft) => {
     const data = await filesToDataURLs(e.target.files);
     setForm((p) => ({ ...p, [ft]: [...p[ft], ...data] }));
     e.target.value = "";
   };
   const removeFile = (ft, i) => setForm((p) => ({ ...p, [ft]: p[ft].filter((_, j) => j !== i) }));
+  const openDetail = (post) => { setSelected(post); setSubView("detail"); };
 
-  const filtered = snsPosts.filter((p) => {
-    const mc = filterCat === "all" || p.category === filterCat;
+  const postsFor = (catId) => snsPosts.filter(p => p.category === catId);
+  const gridPosts   = postsFor(instaAcct).filter(p => p.type === "post").sort((a,b) => b.date.localeCompare(a.date));
+  const storyPosts  = postsFor(instaAcct).filter(p => p.type === "story").sort((a,b) => a.date.localeCompare(b.date));
+  const xPostsRaw   = postsFor(xAcct).sort((a,b) => b.date.localeCompare(a.date));
+  const favPosts    = snsPosts.filter(p => isFav("sns", p.id));
+
+  // ストーリーを月ごとにグループ化
+  const storyByMonth = storyPosts.reduce((acc, s) => {
+    const ym = s.date.slice(0,7); // "2026-01"
+    if (!acc[ym]) acc[ym] = [];
+    acc[ym].push(s);
+    return acc;
+  }, {});
+  const storyMonths = Object.keys(storyByMonth).sort((a,b) => a.localeCompare(b));
+
+  // 投稿を月ごとにグループ化（インスタ用）
+  const gridByMonth = gridPosts.reduce((acc, p) => {
+    const ym = p.date.slice(0,7);
+    if (!acc[ym]) acc[ym] = [];
+    acc[ym].push(p);
+    return acc;
+  }, {});
+  const gridMonths = Object.keys(gridByMonth).sort((a,b) => b.localeCompare(a));
+
+  // X投稿を月ごとにグループ化
+  const xFilteredRaw = xPostsRaw.filter(p => {
     const q = searchQ.toLowerCase();
-    const ms = !q || p.memo.toLowerCase().includes(q) || (p.url||"").toLowerCase().includes(q) || extractHashtags(p.memo).some((t) => t.toLowerCase().includes(q));
-    return mc && ms;
+    return !q || p.memo.toLowerCase().includes(q) || extractHashtags(p.memo).some(t => t.toLowerCase().includes(q));
   });
-  const allTags = [...new Set(snsPosts.flatMap((p) => extractHashtags(p.memo)))];
+  const xByMonth = xFilteredRaw.reduce((acc, p) => {
+    const ym = p.date.slice(0,7);
+    if (!acc[ym]) acc[ym] = [];
+    acc[ym].push(p);
+    return acc;
+  }, {});
+  const xMonths = Object.keys(xByMonth).sort((a,b) => b.localeCompare(a));
+  const allXTags = [...new Set(xPostsRaw.flatMap(p => extractHashtags(p.memo)))];
+
+  const fmtMonth = (ym) => { const [y,m] = ym.split("-"); return `${y}/${m}`; };
 
   return (
     <div>
-      <PageHeader
-        icon="📱" title="SNS" subtitle="WANIMAメンバーのSNS投稿を管理"
+      {storyViewer && (
+        <StoryViewer stories={storyViewer.stories} initialIndex={storyViewer.index}
+          onClose={() => setStoryViewer(null)} onSelect={openDetail} />
+      )}
+
+      <PageHeader icon="📱" title="SNS" subtitle="WANIMAのSNS投稿を管理"
         action={
-          <div style={{ display: "flex", gap: 8, flexWrap:"wrap" }}>
-            {[["list","📋 一覧"],["calendar","📅 カレンダー"],["favs","♥ お気に入り"]].map(([v,label]) => (
-              <button key={v} style={{ ...S.tabBtn, ...(subView === v ? S.tabBtnActive : {}) }} onClick={() => setSubView(v)}>
-                {label}
-              </button>
-            ))}
-            <button style={S.addBtn} onClick={() => setSubView(subView === "add" ? "list" : "add")}>
-              {subView === "add" ? "✕ キャンセル" : "＋ 追加"}
-            </button>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+            {tab === "insta" && <>
+              <button style={{ ...S.tabBtn, ...(subView==="favs"?{...S.tabBtnActive,borderColor:"#e53935",background:"#fce4e4",color:"#b71c1c"}:{}) }} onClick={() => setSubView("favs")}>♥</button>
+            </>}
+            <button style={S.addBtn} onClick={() => {
+              setForm(f => ({ ...f, category: tab==="insta" ? instaAcct : xAcct }));
+              setSubView(s => s==="add" ? (tab==="insta"?"grid":"timeline") : "add");
+            }}>{subView==="add" ? "✕" : "＋ 追加"}</button>
           </div>
         }
       />
 
+      {/* メインタブ */}
+      <div style={IS.mainTabRow}>
+        <button style={{ ...IS.mainTab, ...(tab==="insta"?IS.mainTabActive:{}) }}
+          onClick={() => { setTab("insta"); setSubView("grid"); setSearchQ(""); }}>📸 Instagram</button>
+        <button style={{ ...IS.mainTab, ...(tab==="x"?IS.mainTabActive:{}) }}
+          onClick={() => { setTab("x"); setSubView("timeline"); setSearchQ(""); }}>𝕏 X (Twitter)</button>
+      </div>
+
+      {/* 追加フォーム */}
       {subView === "add" && (
         <SnsAddForm form={form} setForm={setForm} imgRef={imgRef} vidRef={vidRef}
-          handleFile={handleFile} removeFile={removeFile} handleAdd={handleAdd} onCancel={() => setSubView("list")} />
+          handleFile={handleFile} removeFile={removeFile} handleAdd={handleAdd}
+          onCancel={() => setSubView(tab==="insta"?"grid":"timeline")} />
       )}
 
+      {/* 詳細 */}
       {subView === "detail" && selected && (
-        <SnsDetail post={selected} onBack={() => setSubView("list")} onDelete={handleDelete}
-          onTagClick={(t) => { setSearchQ(t); setSubView("list"); }} />
-      )}
-
-      {subView === "list" && (
-        <SnsListView
-          posts={filtered} allPosts={snsPosts} searchQ={searchQ} setSearchQ={setSearchQ}
-          filterCat={filterCat} setFilterCat={setFilterCat} allTags={allTags}
-          onSelect={(p) => { setSelected(p); setSubView("detail"); }} onDelete={handleDelete}
-          toggleFav={toggleFav} isFav={isFav}
+        <SnsDetail post={selected}
+          onBack={() => setSubView(tab==="insta"?"grid":"timeline")}
+          onDelete={handleDelete}
+          onTagClick={(t) => { setSearchQ(t); setSubView(tab==="insta"?"grid":"timeline"); }}
+          onUpdate={(updated) => { setSnsPosts(p => p.map(x => x.id===updated.id?updated:x)); setSelected(updated); }}
+          isFav={isFav("sns", selected.id)} onToggleFav={() => toggleFav("sns", selected.id)}
         />
       )}
 
-      {subView === "calendar" && (
-        <SnsCalendar posts={snsPosts} onSelect={(p) => { setSelected(p); setSubView("detail"); }} />
+      {/* ════ INSTAGRAM ════ */}
+      {tab === "insta" && subView !== "add" && subView !== "detail" && (
+        <div>
+          {/* アカウント切り替え */}
+          <div style={IS.acctRow}>
+            {INSTA_ACCOUNTS.map(acct => (
+              <button key={acct.id}
+                style={{ ...IS.acctBtn, ...(instaAcct===acct.id?{ borderColor:acct.color, background:acct.color+"18" }:{}) }}
+                onClick={() => { setInstaAcct(acct.id); setSubView("grid"); }}>
+                <div style={{ ...IS.acctAvatar, background:instaAcct===acct.id?acct.color:"#ccc" }}>{acct.avatar}</div>
+                <span style={{ fontSize:12, fontWeight:700, color:instaAcct===acct.id?acct.color:"#555" }}>{acct.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* お気に入り */}
+          {subView === "favs" && (
+            <div>
+              <div style={{ fontSize:13, color:"#888", marginBottom:14 }}>♥ インスタお気に入り</div>
+              {favPosts.filter(p => p.category.includes("insta")).length === 0
+                ? <EmptyState />
+                : <InstaGrid posts={favPosts.filter(p => p.category.includes("insta"))} onSelect={openDetail} isFav={isFav} onToggleFav={id => toggleFav("sns",id)} />
+              }
+            </div>
+          )}
+
+          {/* グリッド or ストーリーアーカイブ */}
+          {(subView === "grid" || subView === "story_cal") && (
+            <div>
+              {/* ストーリーハイライト（月ごと）＋アーカイブ切り替え */}
+              {storyMonths.length > 0 && (
+                <div style={IS.highlightSection}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                    <div style={IS.highlightLabel}>ストーリー</div>
+                    <button
+                      style={{ ...S.tabBtn, fontSize:11, padding:"4px 10px", ...(subView==="story_cal"?S.tabBtnActive:{}) }}
+                      onClick={() => setSubView(v => v==="story_cal"?"grid":"story_cal")}>
+                      📂 アーカイブ
+                    </button>
+                  </div>
+                  <div style={IS.highlightRow}>
+                    {storyMonths.map(ym => {
+                      const acct = INSTA_ACCOUNTS.find(a => a.id === instaAcct);
+                      const monthStories = storyByMonth[ym];
+                      const thumb = monthStories.find(s => s.images.length > 0 || s.videos.length > 0);
+                      return (
+                        <div key={ym} style={IS.highlightItem}
+                          onClick={() => setStoryViewer({ stories:monthStories, index:0 })}>
+                          <div style={{ ...IS.highlightRing, borderColor:acct.color }}>
+                            {thumb?.images.length > 0
+                              ? <img src={thumb.images[0].url} alt="" style={IS.highlightThumb} />
+                              : thumb?.videos.length > 0
+                                ? <video src={thumb.videos[0].url} style={IS.highlightThumb} muted playsInline />
+                                : <div style={{ ...IS.highlightThumb, background:acct.color+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📖</div>
+                            }
+                          </div>
+                          <div style={IS.highlightDate}>{fmtMonth(ym)}</div>
+                          <div style={{ fontSize:9, color:"#bbb" }}>{monthStories.length}件</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ストーリーアーカイブ（カレンダー形式） */}
+              {subView === "story_cal" && (
+                <div style={{ marginBottom:16 }}>
+                  <SnsCalendar
+                    posts={storyPosts}
+                    onSelect={openDetail}
+                    onStoryOpen={(stories, idx) => setStoryViewer({ stories, index: idx })}
+                  />
+                </div>
+              )}
+
+              {/* 投稿グリッド（月ごと）- アーカイブ表示中は非表示 */}
+              {subView !== "story_cal" && (
+                <div>
+                  <div style={IS.statsRow}>
+                    <span style={IS.statNum}>{gridPosts.length}</span><span style={IS.statLbl}>投稿</span>
+                    <span style={IS.statNum}>{storyPosts.length}</span><span style={IS.statLbl}>ストーリー</span>
+                  </div>
+                  {gridMonths.length === 0 ? <EmptyState /> : (
+                    gridMonths.map(ym => (
+                      <div key={ym} style={{ marginBottom:20 }}>
+                        <div style={IS.monthHeader}>{fmtMonth(ym)}<span style={{ fontSize:11, color:"#bbb", marginLeft:8 }}>{gridByMonth[ym].length}件</span></div>
+                        <InstaGrid posts={gridByMonth[ym]} onSelect={openDetail} isFav={isFav} onToggleFav={id => toggleFav("sns",id)} />
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════ X ════ */}
+      {tab === "x" && subView !== "add" && subView !== "detail" && (
+        <div>
+          {/* アカウント切り替え */}
+          <div style={IS.acctRow}>
+            {X_ACCOUNTS.map(acct => (
+              <button key={acct.id}
+                style={{ ...IS.acctBtn, ...(xAcct===acct.id?{ borderColor:acct.color||"#1a1a1a", background:(acct.color||"#1a1a1a")+"18" }:{}) }}
+                onClick={() => setXAcct(acct.id)}>
+                <div style={{ ...IS.acctAvatar, fontSize:11, background:xAcct===acct.id?(acct.color||"#1a1a1a"):"#ccc" }}>{acct.avatar}</div>
+                <span style={{ fontSize:12, fontWeight:700, color:xAcct===acct.id?(acct.color||"#1a1a1a"):"#555" }}>{acct.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 検索 */}
+          <div style={{ ...S.searchBox, marginBottom:10 }}>
+            <span>🔍</span>
+            <input style={S.searchInput} placeholder="キーワード・#タグで検索..." value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)} />
+            {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+          </div>
+          {allXTags.length > 0 && (
+            <div style={{ ...S.tagRow, marginBottom:14 }}>
+              {allXTags.slice(0,12).map(t => (
+                <button key={t} style={{ ...S.hashChip, ...(searchQ===t?S.hashChipActive:{}) }}
+                  onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+              ))}
+            </div>
+          )}
+
+          {/* X投稿リスト（月ごと） */}
+          {xMonths.length === 0 ? <EmptyState /> : (
+            xMonths.map(ym => (
+              <div key={ym} style={{ marginBottom:20 }}>
+                <div style={IS.monthHeader}>{fmtMonth(ym)}<span style={{ fontSize:11, color:"#bbb", marginLeft:8 }}>{xByMonth[ym].length}件</span></div>
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {xByMonth[ym].map(post => (
+                    <XPostCard key={post.id} post={post} onClick={() => openDetail(post)}
+                      isFav={isFav("sns", post.id)} onToggleFav={() => toggleFav("sns", post.id)}
+                      onDelete={handleDelete} />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function SnsListView({ posts, allPosts, searchQ, setSearchQ, filterCat, setFilterCat, allTags, onSelect, onDelete, toggleFav, isFav }) {
+// ── インスタグリッド ─────────────────────────────────────────
+function InstaGrid({ posts, onSelect, isFav, onToggleFav }) {
   return (
-    <div>
-      <div style={S.statsBar}>
-        {SNS_CATEGORIES.map((cat) => (
-          <div key={cat.id} style={S.statItem}>
-            <span style={{ ...S.statDot, background: cat.color }} />
-            <span style={S.statLabel}>{cat.label}</span>
-            <span style={S.statCount}>{allPosts.filter((p) => p.category === cat.id).length}</span>
+    <div style={IS.grid}>
+      {posts.map(post => (
+        <div key={post.id} style={IS.gridItem} onClick={() => onSelect(post)}>
+          {post.images.length > 0
+            ? <img src={post.images[0].url} alt="" style={IS.gridImg} />
+            : <div style={{ ...IS.gridImg, background:"#f0ede6", display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:4 }}>
+                <span style={{ fontSize:22, opacity:.4 }}>📝</span>
+                {post.videos.length > 0 && <span style={{ fontSize:10, color:"#aaa" }}>🎬 動画</span>}
+              </div>
+          }
+          {/* オーバーレイ */}
+          <div style={IS.gridOverlay}>
+            {post.images.length > 1 && <span style={IS.gridMulti}>⧉</span>}
+            {post.videos.length > 0 && <span style={IS.gridMulti}>▶</span>}
+            {isFav("sns", post.id) && <span style={IS.gridFav}>♥</span>}
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── ストーリービューアー ──────────────────────────────────────
+function StoryViewer({ stories, initialIndex, onClose, onSelect }) {
+  const [idx, setIdx] = useState(initialIndex);
+  const story = stories[idx];
+  const acct = INSTA_ACCOUNTS.find(a => a.id === story.category) || INSTA_ACCOUNTS[0];
+
+  const prev = () => setIdx(v => Math.max(0, v-1));
+  const next = () => { if (idx < stories.length-1) setIdx(v => v+1); else onClose(); };
+
+  // タッチスワイプ
+  const touchStart = useRef(null);
+  const onTouchStart = (e) => { touchStart.current = e.touches[0].clientX; };
+  const onTouchEnd   = (e) => {
+    if (!touchStart.current) return;
+    const dx = e.changedTouches[0].clientX - touchStart.current;
+    if (dx > 50) prev();
+    else if (dx < -50) next();
+    touchStart.current = null;
+  };
+
+  return (
+    <div style={IS.viewerOverlay} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      {/* 進行バー */}
+      <div style={IS.progressRow}>
+        {stories.map((_,i) => (
+          <div key={i} style={{ ...IS.progressBar, background: i<=idx ? "#fff" : "rgba(255,255,255,.4)" }} />
         ))}
       </div>
 
-      <div style={S.searchBox}>
-        <span>🔍</span>
-        <input style={S.searchInput} placeholder="#タグ・キーワード・URLで検索..." value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
-        {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+      {/* ヘッダー */}
+      <div style={IS.viewerHeader}>
+        <div style={{ ...IS.acctAvatar, background:acct.color, width:32, height:32, fontSize:14 }}>{acct.avatar}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{acct.label}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,.6)" }}>{story.date}</div>
+        </div>
+        <button style={IS.viewerClose} onClick={onClose}>✕</button>
       </div>
 
-      <div style={S.filterRow}>
-        {[{id:"all",label:"ALL"},...SNS_CATEGORIES].map((cat) => (
-          <button key={cat.id} style={{ ...S.chip, ...(filterCat === cat.id ? { ...S.chipActive, borderColor: cat.color||"#ff4e1a", background: (cat.color||"#ff4e1a")+"22" } : {}) }}
-            onClick={() => setFilterCat(cat.id)}>
-            {cat.icon ? `${cat.icon} ` : ""}{cat.label}
-          </button>
-        ))}
+      {/* コンテンツ */}
+      <div style={IS.viewerContent}>
+        {story.videos.length > 0
+          ? <video
+              key={story.id}
+              src={story.videos[0].url}
+              controls
+              loop
+              playsInline
+              autoPlay
+              style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", display:"block" }}
+            />
+          : story.images.length > 0
+            ? <img src={story.images[0].url} alt="" style={IS.viewerImg} />
+            : <div style={IS.viewerNoImg}>
+                <span style={{ fontSize:48 }}>📖</span>
+                <div style={{ color:"rgba(255,255,255,.7)", fontSize:14, marginTop:12, textAlign:"center", padding:"0 24px", lineHeight:1.6 }}>
+                  {story.memo}
+                </div>
+              </div>
+        }
       </div>
 
-      {allTags.length > 0 && (
-        <div style={S.tagRow}>
-          {allTags.slice(0, 14).map((t) => (
-            <button key={t} style={{ ...S.hashChip, ...(searchQ === t ? S.hashChipActive : {}) }}
-              onClick={() => setSearchQ(searchQ === t ? "" : t)}>{t}</button>
+      {/* メモ・タグ（画像・動画ありの場合のみ下部に） */}
+      {(story.images.length > 0 || story.videos.length > 0) && story.memo && (
+        <div style={IS.viewerCaption}>
+          <div style={{ fontSize:13, color:"rgba(255,255,255,.9)", lineHeight:1.6 }}>{story.memo}</div>
+          {extractHashtags(story.memo).length > 0 && (
+            <div style={{ display:"flex", flexWrap:"wrap", gap:4, marginTop:6 }}>
+              {extractHashtags(story.memo).map(t => <span key={t} style={{ fontSize:11, color:"rgba(255,255,255,.7)" }}>{t}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 左右タップエリア */}
+      <button style={IS.tapLeft}  onClick={prev} />
+      <button style={IS.tapRight} onClick={next} />
+
+      {/* 詳細ボタン */}
+      <button style={IS.viewerDetail} onClick={() => { onClose(); setTimeout(() => onSelect(story), 50); }}>
+        詳細を見る →
+      </button>
+    </div>
+  );
+}
+
+// ── X投稿カード ───────────────────────────────────────────────
+function XPostCard({ post, onClick, isFav, onToggleFav, onDelete }) {
+  const cat = getCatInfo(post.category);
+  const tags = extractHashtags(post.memo);
+  return (
+    <div style={IS.xCard} onClick={onClick}>
+      <div style={IS.xCardHeader}>
+        <div style={{ ...IS.xAvatar, background:cat.color }}>{cat.id.includes("kenta")?"K":"W"}</div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700, fontSize:13, color:"#1a1a1a" }}>{cat.label}</div>
+          <div style={{ fontSize:11, color:"#999" }}>{post.date}</div>
+        </div>
+        <FavBtn active={isFav} onToggle={onToggleFav} size={16} />
+        <button style={S.delBtn} onClick={(e) => { e.stopPropagation(); onDelete(post.id); }}>🗑</button>
+      </div>
+      {post.memo && <div style={IS.xCardMemo}>{post.memo}</div>}
+      {tags.length > 0 && <div style={{ ...S.tagWrap, marginBottom:8 }}>{tags.map(t => <span key={t} style={{ ...S.tagPill, color:"#1565c0", background:"#e3f2fd", borderColor:"#90caf9" }}>{t}</span>)}</div>}
+      {post.images.length > 0 && (
+        <div style={{ display:"flex", gap:4, marginBottom:8, borderRadius:10, overflow:"hidden" }}>
+          {post.images.slice(0,4).map((img,i) => (
+            <img key={i} src={img.url} alt="" style={{ flex:1, height:post.images.length>1?100:180, objectFit:"cover", display:"block" }} />
           ))}
         </div>
       )}
-
-      {posts.length === 0 ? <EmptyState /> : (
-        <div style={S.cardGrid}>
-          {posts.map((p) => <SnsCard key={p.id} post={p} onClick={() => onSelect(p)} onDelete={onDelete} isFav={isFav(p.id)} onToggleFav={()=>toggleFav("sns",p.id)} />)}
+      {post.url && (
+        <div style={{ fontSize:11, color:"#1565c0", marginTop:4 }} onClick={e=>e.stopPropagation()}>
+          <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ color:"#1565c0", textDecoration:"none" }}>🔗 {post.url.slice(0,45)}{post.url.length>45?"…":""}</a>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Instagram-specific styles ────────────────────────────────
+const IS = {
+  mainTabRow:     { display:"flex", borderBottom:"1px solid #ddd8cc", marginBottom:16 },
+  mainTab:        { flex:1, background:"transparent", border:"none", borderBottom:"2px solid transparent", padding:"10px 0", fontSize:14, fontWeight:700, color:"#888", cursor:"pointer", fontFamily:"inherit", transition:"all .15s" },
+  mainTabActive:  { color:"#1a1a1a", borderBottomColor:"#1a1a1a" },
+  acctRow:        { display:"flex", gap:10, marginBottom:16 },
+  acctBtn:        { display:"flex", alignItems:"center", gap:8, background:"#fff", border:"2px solid #ddd8cc", borderRadius:10, padding:"8px 14px", cursor:"pointer", fontFamily:"inherit", flex:1, justifyContent:"center" },
+  acctAvatar:     { width:28, height:28, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:900, color:"#fff", flexShrink:0 },
+  highlightSection: { marginBottom:16 },
+  highlightLabel: { fontSize:11, fontWeight:700, color:"#888", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:10 },
+  highlightRow:   { display:"flex", gap:14, overflowX:"auto", paddingBottom:8, WebkitOverflowScrolling:"touch" },
+  highlightItem:  { display:"flex", flexDirection:"column", alignItems:"center", gap:5, cursor:"pointer", flexShrink:0 },
+  highlightRing:  { width:60, height:60, borderRadius:"50%", border:"2.5px solid", padding:2, overflow:"hidden" },
+  highlightThumb: { width:"100%", height:"100%", borderRadius:"50%", objectFit:"cover", display:"block" },
+  highlightDate:  { fontSize:10, color:"#888", textAlign:"center", maxWidth:64, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" },
+  statsRow:       { display:"flex", gap:16, alignItems:"baseline", marginBottom:12, padding:"8px 0", borderTop:"1px solid #eee", borderBottom:"1px solid #eee" },
+  statNum:        { fontSize:16, fontWeight:800, color:"#1a1a1a" },
+  statLbl:        { fontSize:11, color:"#888", marginRight:12 },
+  // grid
+  grid:           { display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:2 },
+  gridItem:       { position:"relative", aspectRatio:"1", cursor:"pointer", overflow:"hidden", background:"#f0ede6" },
+  gridImg:        { width:"100%", height:"100%", objectFit:"cover", display:"block" },
+  gridOverlay:    { position:"absolute", top:4, right:4, display:"flex", flexDirection:"column", gap:3, alignItems:"flex-end" },
+  gridMulti:      { fontSize:14, color:"#fff", textShadow:"0 1px 3px rgba(0,0,0,.5)" },
+  gridFav:        { fontSize:13, color:"#ff4081" },
+  // story viewer
+  viewerOverlay:  { position:"fixed", inset:0, background:"#000", zIndex:1000, display:"flex", flexDirection:"column" },
+  progressRow:    { display:"flex", gap:3, padding:"48px 12px 8px", zIndex:10 },
+  progressBar:    { flex:1, height:2, borderRadius:2, transition:"background .2s" },
+  viewerHeader:   { display:"flex", alignItems:"center", gap:10, padding:"8px 16px 12px", zIndex:10 },
+  viewerClose:    { background:"transparent", border:"none", color:"#fff", fontSize:22, cursor:"pointer", padding:4, lineHeight:1 },
+  viewerContent:  { flex:1, display:"flex", alignItems:"center", justifyContent:"center", position:"relative" },
+  viewerImg:      { maxWidth:"100%", maxHeight:"100%", objectFit:"contain", display:"block" },
+  viewerNoImg:    { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flex:1, padding:32 },
+  viewerCaption:  { padding:"16px 20px 32px", background:"linear-gradient(transparent, rgba(0,0,0,.7))", position:"absolute", bottom:0, left:0, right:0 },
+  tapLeft:        { position:"absolute", left:0, top:"10%", bottom:"10%", width:"35%", background:"transparent", border:"none", cursor:"pointer", zIndex:5 },
+  tapRight:       { position:"absolute", right:0, top:"10%", bottom:"10%", width:"35%", background:"transparent", border:"none", cursor:"pointer", zIndex:5 },
+  viewerDetail:   { position:"absolute", bottom:80, left:"50%", transform:"translateX(-50%)", background:"rgba(255,255,255,.15)", border:"1px solid rgba(255,255,255,.3)", color:"#fff", borderRadius:20, padding:"8px 20px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", zIndex:10, backdropFilter:"blur(4px)" },
+  // X card
+  xCard:          { background:"#fff", border:"1px solid #ddd8cc", borderRadius:14, padding:"14px 16px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
+  xCardHeader:    { display:"flex", alignItems:"center", gap:10, marginBottom:10 },
+  xAvatar:        { width:36, height:36, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontWeight:900, color:"#fff", flexShrink:0 },
+  xCardMemo:      { fontSize:14, color:"#1a1a1a", lineHeight:1.7, marginBottom:8, whiteSpace:"pre-wrap" },
+  monthHeader:    { fontSize:13, fontWeight:800, color:"#555", marginBottom:10, display:"flex", alignItems:"baseline" },
+  storyCalGrid:   { display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:"4px 0", marginBottom:16 },
+};
+
+// ── 旧SnsListView / SnsCard（XPostCard に統合済みのため最小化）──
+function SnsListView({ posts, allPosts, searchQ, setSearchQ, filterCat, setFilterCat, allTags, onSelect, onDelete, toggleFav, isFav }) {
+  return (
+    <div style={S.cardGrid}>
+      {posts.map(p => <SnsCard key={p.id} post={p} onClick={() => onSelect(p)} onDelete={onDelete}
+        isFav={isFav(p.id)} onToggleFav={() => toggleFav("sns", p.id)} />)}
     </div>
   );
 }
 
 function SnsCard({ post, onClick, onDelete, isFav, onToggleFav }) {
-  const [confirm, dialog] = useConfirm();
   const cat = getCatInfo(post.category);
   const tags = extractHashtags(post.memo);
-  const ptype = POST_TYPES.find((t) => t.id === post.type);
+  const ptype = POST_TYPES.find(t => t.id === post.type);
   return (
     <div style={S.card} onClick={onClick}>
-      <div style={{ ...S.cardStripe, background: cat.color }} />
+      <div style={{ ...S.cardStripe, background:cat.color }} />
       <div style={S.cardHead}>
         <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-          <span style={{ ...S.badge, background: cat.color+"22", color: cat.color, borderColor: cat.color+"55" }}>{cat.icon} {cat.label}</span>
+          <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"55" }}>{cat.icon} {cat.label}</span>
           {ptype && <span style={S.badgeGray}>{ptype.label}</span>}
         </div>
         <span style={S.dateTxt}>{post.date}</span>
       </div>
       <div style={S.cardMemo}>{post.memo || <span style={{opacity:.4}}>メモなし</span>}</div>
-      {tags.length > 0 && <div style={S.tagWrap}>{tags.map((t) => <span key={t} style={S.tagPill}>{t}</span>)}</div>}
-      {post.url && (
-        <div style={S.cardUrlRow} onClick={(e) => e.stopPropagation()}>
-          <span style={{fontSize:11,opacity:.5}}>🔗</span>
-          <a href={post.url} target="_blank" rel="noopener noreferrer" style={S.urlTxt}>{post.url.slice(0,42)}{post.url.length>42?"…":""}</a>
-        </div>
-      )}
+      {tags.length>0 && <div style={S.tagWrap}>{tags.map(t=><span key={t} style={S.tagPill}>{t}</span>)}</div>}
+      {post.url && <div style={S.cardUrlRow}><span style={{fontSize:11,opacity:.5}}>🔗</span><a href={post.url} target="_blank" rel="noopener noreferrer" style={S.urlTxt}>{post.url.slice(0,42)}{post.url.length>42?"…":""}</a></div>}
       <div style={S.cardFoot}>
         <div style={{display:"flex",gap:5}}>
-          {post.images.length>0 && <span style={S.mediaBadge}>🖼 {post.images.length}</span>}
-          {post.videos.length>0 && <span style={S.mediaBadge}>🎬 {post.videos.length}</span>}
+          {post.images.length>0&&<span style={S.mediaBadge}>🖼 {post.images.length}</span>}
+          {post.videos.length>0&&<span style={S.mediaBadge}>🎬 {post.videos.length}</span>}
         </div>
-        {dialog}
-        <button style={S.delBtn} onClick={(e)=>{e.stopPropagation();confirm("この投稿を削除しますか？",()=>onDelete(post.id));}}>🗑</button>
+        <div style={{display:"flex",gap:4}}>
+          <FavBtn active={isFav} onToggle={onToggleFav} size={14}/>
+          <button style={S.delBtn} onClick={e=>{e.stopPropagation();onDelete(post.id);}}>🗑</button>
+        </div>
       </div>
     </div>
   );
 }
 
+
+
+// ── SnsDetail ──────────────────────────────────────────────────
 function SnsDetail({ post, onBack, onDelete, onTagClick, onUpdate, isFav, onToggleFav }) {
   const [confirm, dialog] = useConfirm();
   const [editing, setEditing] = useState(false);
@@ -532,9 +896,10 @@ function SnsDetail({ post, onBack, onDelete, onTagClick, onUpdate, isFav, onTogg
   const tags = extractHashtags(post.memo);
   return (
     <div style={S.detailWrap}>
+      {dialog}
       <button style={S.backBtn} onClick={onBack}>← 戻る</button>
       <div style={S.detailCard}>
-        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px" , background: cat.color }} />
+        <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background:cat.color }} />
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
           <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"55" }}>{cat.icon} {cat.label}</span>
           {POST_TYPES.find((t)=>t.id===post.type) && <span style={S.badgeGray}>{POST_TYPES.find((t)=>t.id===post.type).label}</span>}
@@ -581,52 +946,52 @@ function SnsDetail({ post, onBack, onDelete, onTagClick, onUpdate, isFav, onTogg
             </div>
           </div>
         ) : (
-        <div style={{ fontSize:15, lineHeight:1.8, marginBottom:12, whiteSpace:"pre-wrap", color:"#333" }}>{post.memo||<span style={{opacity:.4}}>メモなし</span>}</div>
+          <div style={{ fontSize:15, lineHeight:1.8, marginBottom:12, whiteSpace:"pre-wrap", color:"#333" }}>{post.memo||<span style={{opacity:.4}}>メモなし</span>}</div>
         )}
-        {tags.length>0 && <div style={S.tagWrap}>{tags.map((t)=><button key={t} style={{...S.tagPill,cursor:"pointer",border:"none"}} onClick={()=>onTagClick(t)}>{t}</button>)}</div>}
-        {post.url && (
-          <div style={S.detailUrlBox}>
-            <div style={S.sectionTitle}>🔗 リンク</div>
-            <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:"#7ec8ff", textDecoration:"none", wordBreak:"break-all", lineHeight:1.5, display:"block", marginBottom:8 }}>{post.url}</a>
-            <button style={S.copyBtn} onClick={()=>navigator.clipboard.writeText(post.url)}>📋 コピー</button>
-          </div>
-        )}
-        {post.images.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>📷 画像</div><div style={S.mediaGrid}>{post.images.map((img,i)=><img key={i} src={img.url} alt={img.name} style={S.thumb}/>)}</div></div>)}
-        {post.videos.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>🎬 動画</div><div style={S.mediaGrid}>{post.videos.map((v,i)=><video key={i} src={v.url} controls style={S.thumb}/>)}</div></div>)}
+        {!editing && <>
+          {tags.length>0 && <div style={S.cardTags}>{tags.map((tag)=><button key={tag} style={{...S.tagPill,cursor:"pointer",border:"none"}} onClick={()=>onTagClick(tag)}>{tag}</button>)}</div>}
+          {post.url && (
+            <div style={S.detailUrlBox}>
+              <div style={S.sectionTitle}>🔗 リンク</div>
+              <a href={post.url} target="_blank" rel="noopener noreferrer" style={{ fontSize:13, color:"#1565c0", textDecoration:"none", wordBreak:"break-all", lineHeight:1.5, display:"block", marginBottom:8 }}>{post.url}</a>
+              <button style={S.copyBtn} onClick={()=>navigator.clipboard.writeText(post.url)}>📋 コピー</button>
+            </div>
+          )}
+          {post.images.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>📷 画像</div><div style={S.mediaGrid}>{post.images.map((img,i)=><MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}</div></div>)}
+          {post.videos.length>0 && (<div style={S.mediaSection}><div style={S.sectionTitle}>🎬 動画</div><div style={S.mediaGrid}>{post.videos.map((v,i)=><MediaItem key={i} src={v.url} name={v.name} type="video" index={i}/>)}</div></div>)}
+        </>}
         <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
-          {dialog}
-          <button style={S.dangerBtn} onClick={()=>confirm("この投稿を削除しますか？",()=>onDelete(post.id))}>🗑 削除する</button>
+          <button style={S.dangerBtn} onClick={() => confirm("この投稿を削除しますか？", () => onDelete(post.id))}>🗑 削除する</button>
         </div>
       </div>
     </div>
   );
 }
 
+// ── SnsAddForm ─────────────────────────────────────────────────
 function SnsAddForm({ form, setForm, imgRef, vidRef, handleFile, removeFile, handleAdd, onCancel }) {
   const isValid = form.memo || form.url || form.images.length || form.videos.length;
   return (
     <div style={{ ...S.formCard, marginBottom:24 }}>
+      <div style={S.fieldGroup}>
+        <label style={S.fieldLabel}>カテゴリ</label>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+          {SNS_CATEGORIES.map((cat)=>(
+            <button key={cat.id} style={{ ...S.catBtn, ...(form.category===cat.id ? { borderColor:cat.color, background:cat.color+"22", color:cat.color } : {}) }}
+              onClick={()=>setForm((p)=>({...p,category:cat.id}))}>{cat.icon} {cat.label}</button>
+          ))}
+        </div>
+      </div>
       <div style={S.formGrid2}>
         <div style={S.fieldGroup}>
-          <label style={S.fieldLabel}>カテゴリ</label>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
-            {SNS_CATEGORIES.map((cat)=>(
-              <button key={cat.id} style={{ ...S.catBtn, ...(form.category===cat.id ? { borderColor:cat.color, background:cat.color+"22", color:cat.color } : {}) }}
-                onClick={()=>setForm((p)=>({...p,category:cat.id}))}>{cat.icon} {cat.label}</button>
-            ))}
+          <label style={S.fieldLabel}>投稿タイプ</label>
+          <div style={{ display:"flex", gap:8 }}>
+            {POST_TYPES.map((t)=><button key={t.id} style={{ ...S.typeBtn, ...(form.type===t.id?S.typeBtnActive:{}) }} onClick={()=>setForm((p)=>({...p,type:t.id}))}>{t.label}</button>)}
           </div>
         </div>
-        <div>
-          <div style={S.fieldGroup}>
-            <label style={S.fieldLabel}>投稿タイプ</label>
-            <div style={{ display:"flex", gap:8 }}>
-              {POST_TYPES.map((t)=><button key={t.id} style={{ ...S.typeBtn, ...(form.type===t.id?S.typeBtnActive:{}) }} onClick={()=>setForm((p)=>({...p,type:t.id}))}>{t.label}</button>)}
-            </div>
-          </div>
-          <div style={S.fieldGroup}>
-            <label style={S.fieldLabel}>投稿日</label>
-            <input type="date" style={S.inputBase} value={form.date} onChange={(e)=>setForm((p)=>({...p,date:e.target.value}))} />
-          </div>
+        <div style={S.fieldGroup}>
+          <label style={S.fieldLabel}>投稿日</label>
+          <input type="date" style={S.inputBase} value={form.date} onChange={(e)=>setForm((p)=>({...p,date:e.target.value}))} />
         </div>
       </div>
       <div style={S.fieldGroup}>
@@ -635,7 +1000,7 @@ function SnsAddForm({ form, setForm, imgRef, vidRef, handleFile, removeFile, han
       </div>
       <div style={S.fieldGroup}>
         <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
-        <textarea style={S.textarea} rows={3} placeholder="#WANIMA #KENTA..." value={form.memo} onChange={(e)=>setForm((p)=>({...p,memo:e.target.value}))} />
+        <textarea style={S.textarea} rows={3} value={form.memo} onChange={(e)=>setForm((p)=>({...p,memo:e.target.value}))} />
         {extractHashtags(form.memo).length>0 && <div style={{...S.tagWrap,marginTop:6}}>{extractHashtags(form.memo).map((t)=><span key={t} style={S.tagPill}>{t}</span>)}</div>}
       </div>
       <FileUploadRow label="画像" accept="image/*" inputRef={imgRef} files={form.images} onUpload={(e)=>handleFile(e,"images")} onRemove={(i)=>removeFile("images",i)} icon="📷" isImage />
@@ -648,65 +1013,132 @@ function SnsAddForm({ form, setForm, imgRef, vidRef, handleFile, removeFile, han
   );
 }
 
-function SnsCalendar({ posts, onSelect }) {
-  const today = new Date();
-  const [y, setY] = useState(today.getFullYear());
-  const [m, setM] = useState(today.getMonth());
+// ── SnsCalendar ────────────────────────────────────────────────
+function SnsCalendar({ posts, onSelect, onStoryOpen }) {
+  const todayDate = new Date();
+  const [y, setY] = useState(todayDate.getFullYear());
+  const [m, setM] = useState(todayDate.getMonth());
   const [selDay, setSelDay] = useState(null);
   const daysInMonth = getDaysInMonth(y, m);
   const firstDay = getFirstDayOfMonth(y, m);
+
+  // 日付ごとに投稿を分類
   const byDate = {};
   posts.forEach((p) => { if (!byDate[p.date]) byDate[p.date] = []; byDate[p.date].push(p); });
+
   const MONTHS = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
   const WD = ["日","月","火","水","木","金","土"];
   const cells = [...Array(firstDay).fill(null), ...Array.from({length:daysInMonth},(_,i)=>i+1)];
   const selStr = selDay ? `${y}-${String(m+1).padStart(2,"0")}-${String(selDay).padStart(2,"0")}` : null;
   const selPosts = selStr ? (byDate[selStr]||[]) : [];
+
+  // Instagram風: ストーリーがある日はサムネ表示
+  const acctColor = posts.length > 0 ? getCatInfo(posts[0].category).color : "#E1306C";
+
+  const handleDayClick = (d, dp) => {
+    if (!dp.length) return;
+    const ds = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const stories = (byDate[ds]||[]).filter(p => p.type === "story");
+    if (stories.length > 0 && onStoryOpen) {
+      // ストーリーがある日はビューアー起動
+      onStoryOpen(stories, 0);
+    } else {
+      setSelDay(selDay===d ? null : d);
+    }
+  };
+
   return (
     <div>
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:20, marginBottom:18 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:20, marginBottom:12 }}>
         <button style={S.calNavBtn} onClick={()=>{ if(m===0){setY(v=>v-1);setM(11);}else setM(v=>v-1); setSelDay(null); }}>‹</button>
         <div style={{ textAlign:"center" }}>
           <div style={{ fontSize:13, color:"#666", fontWeight:600 }}>{y}</div>
-          <div style={{ fontSize:24, fontWeight:800, color:"#1a1a1a" }}>{MONTHS[m]}</div>
+          <div style={{ fontSize:22, fontWeight:800, color:"#1a1a1a" }}>{MONTHS[m]}</div>
         </div>
         <button style={S.calNavBtn} onClick={()=>{ if(m===11){setY(v=>v+1);setM(0);}else setM(v=>v+1); setSelDay(null); }}>›</button>
       </div>
-      <div style={S.calGrid}>
-        {WD.map((w,i)=><div key={w} style={{ ...S.calWD, color: i===0?"#b71c1c":i===6?"#1565c0":"#aaa" }}>{w}</div>)}
+
+      {/* 凡例 */}
+      <div style={{ display:"flex", gap:12, justifyContent:"center", marginBottom:10, fontSize:11, color:"#aaa" }}>
+        <span>🔵 投稿</span>
+        <span style={{ color:acctColor }}>○ ストーリー（タップで再生）</span>
+      </div>
+
+      <div style={IS.storyCalGrid}>
+        {WD.map((w,i)=>(
+          <div key={w} style={{ textAlign:"center", fontSize:11, fontWeight:700, padding:"6px 0",
+            color: i===0?"#b71c1c":i===6?"#1565c0":"#aaa" }}>{w}</div>
+        ))}
         {cells.map((d, idx) => {
           if (!d) return <div key={`e${idx}`}/>;
           const ds = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
           const dp = byDate[ds]||[];
-          const isT = isSameDate(new Date(y,m,d), today);
+          const stories  = dp.filter(p => p.type === "story");
+          const nonStory = dp.filter(p => p.type !== "story");
+          const isT   = isSameDate(new Date(y,m,d), todayDate);
           const isSel = selDay===d;
-          const dots = [...new Set(dp.map((p)=>getCatInfo(p.category).color))].slice(0,4);
+          const thumb = stories.find(s => s.images.length > 0);
+          const hasStory = stories.length > 0;
+          const dayColor = idx%7===0?"#b71c1c":idx%7===6?"#1565c0":"#1a1a1a";
+
           return (
-            <div key={d} style={{ ...S.calCell, ...(isSel?S.calCellSel:{}), ...(isT&&!isSel?S.calCellToday:{}), cursor: dp.length?"pointer":"default" }}
-              onClick={()=>dp.length&&setSelDay(isSel?null:d)}>
-              <span style={{ fontSize:13, fontWeight: isT?800:400, color: idx%7===0?"#b71c1c":idx%7===6?"#1565c0":"#1a1a1a" }}>{d}</span>
-              <div style={{ display:"flex",gap:2,flexWrap:"wrap",justifyContent:"center" }}>
-                {dots.map((c,i)=><span key={i} style={{ width:5,height:5,borderRadius:"50%",background:c,display:"block" }}/>)}
-              </div>
+            <div key={d} style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"2px 1px", cursor:dp.length?"pointer":"default" }}
+              onClick={() => handleDayClick(d, dp)}>
+              {/* ストーリーがある日：丸いサムネ（Instagram風） */}
+              {hasStory ? (
+                <div style={{
+                  width:38, height:38, borderRadius:"50%",
+                  border:`2.5px solid ${acctColor}`,
+                  padding:2, overflow:"hidden", position:"relative", flexShrink:0,
+                  boxShadow: isT ? `0 0 0 2px #c8960a` : "none",
+                }}>
+                  {thumb
+                    ? <img src={thumb.images[0].url} alt="" style={{ width:"100%", height:"100%", objectFit:"cover", borderRadius:"50%", display:"block" }} />
+                    : <div style={{ width:"100%", height:"100%", borderRadius:"50%", background:acctColor+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>📖</div>
+                  }
+                  {/* 日付 overlay */}
+                  <div style={{ position:"absolute", bottom:0, right:0, background:"rgba(0,0,0,.55)", borderRadius:10, minWidth:16, textAlign:"center", fontSize:9, color:"#fff", fontWeight:800, lineHeight:"14px", padding:"0 2px" }}>{d}</div>
+                </div>
+              ) : (
+                /* ストーリーなし：通常の日付表示 */
+                <div style={{
+                  width:38, height:38, borderRadius:"50%",
+                  background: isSel ? "#1e7e34" : isT ? "#fff8e1" : "transparent",
+                  border: isT && !isSel ? "2px solid #c8960a" : "2px solid transparent",
+                  display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
+                }}>
+                  <span style={{ fontSize:13, fontWeight:isT?800:400, color: isSel?"#fff":dayColor }}>{d}</span>
+                </div>
+              )}
+              {/* 投稿ドット */}
+              {nonStory.length > 0 && (
+                <div style={{ display:"flex", gap:2, marginTop:2, justifyContent:"center" }}>
+                  {[...new Set(nonStory.map(p=>getCatInfo(p.category).color))].slice(0,3).map((col,i)=>(
+                    <span key={i} style={{ width:4, height:4, borderRadius:"50%", background:col, display:"block" }}/>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-      {selDay && selPosts.length>0 && (
+
+      {/* 選択日の投稿一覧（ストーリーなしの投稿のみ） */}
+      {selDay && selPosts.filter(p=>p.type!=="story").length > 0 && (
         <div style={S.calPanel}>
           <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
             <span style={{ fontWeight:800, fontSize:15 }}>{y}年{m+1}月{selDay}日</span>
-            <span style={{ fontSize:12, color:"#666" }}>{selPosts.length}件</span>
+            <span style={{ fontSize:12, color:"#666" }}>{selPosts.filter(p=>p.type!=="story").length}件</span>
           </div>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {selPosts.map((p)=>{
+            {selPosts.filter(p=>p.type!=="story").map((p)=>{
               const cat = getCatInfo(p.category);
               return (
                 <div key={p.id} style={{ ...S.calPostRow, borderLeftColor:cat.color }} onClick={()=>onSelect(p)}>
                   <div style={{ display:"flex", gap:5, marginBottom:5, flexWrap:"wrap" }}>
                     <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"55" }}>{cat.icon} {cat.label}</span>
-                    <span style={S.badgeGray}>{POST_TYPES.find((t)=>t.id===p.type)?.label}</span>
                   </div>
+                  {p.images.length > 0 && <img src={p.images[0].url} alt="" style={{ width:"100%", height:80, objectFit:"cover", borderRadius:6, display:"block", marginBottom:4 }}/>}
                   <div style={{ fontSize:13, color:"#1a1a1a", lineHeight:1.5 }}>{p.memo||<span style={{opacity:.4}}>メモなし</span>}</div>
                 </div>
               );
@@ -718,9 +1150,7 @@ function SnsCalendar({ posts, onSelect }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  LIVE PAGE  — ツアー（親）→ 公演（子）の2層構造
-// ═══════════════════════════════════════════════════════════════
+
 
 function LivePage({ tours, setTours, shows, setShows, toggleFav, isFav }) {
   // layer: "tours" | "tour_detail" | "show_detail"
@@ -1340,13 +1770,13 @@ function LivePage({ tours, setTours, shows, setShows, toggleFav, isFav }) {
         {activeShow.images?.length>0 && (
           <div style={S.mediaSection}>
             <div style={S.sectionTitle}>📷 画像</div>
-            <div style={S.mediaGrid}>{activeShow.images.map((img,i)=><img key={i} src={img.url} style={S.thumb}/>)}</div>
+            <div style={S.mediaGrid}>{activeShow.images.map((img,i)=><MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}</div>
           </div>
         )}
         {activeShow.videos?.length>0 && (
           <div style={S.mediaSection}>
             <div style={S.sectionTitle}>🎬 動画</div>
-            <div style={S.mediaGrid}>{activeShow.videos.map((v,i)=><video key={i} src={v.url} controls style={S.thumb}/>)}</div>
+            <div style={S.mediaGrid}>{activeShow.videos.map((v,i)=><MediaItem key={i} src={v.url} name={v.name} type="video" index={i}/>)}</div>
           </div>
         )}
 
@@ -2212,7 +2642,7 @@ function GoodsPage({ goodsTours, setGoodsTours, goodsItems, setGoodsItems, toggl
               <div style={S.sectionTitle}>📷 サブ画像</div>
               <div style={S.mediaGrid}>
                 {activeItem.subImages.map((img, i) => (
-                  <img key={i} src={img.url} alt="" style={S.thumb} />
+                  <MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>
                 ))}
               </div>
             </div>
@@ -2742,7 +3172,7 @@ function MediaPage({ mediaTypes, setMediaTypes, mediaItems, setMediaItems, toggl
         {activeItem.images?.length > 0 && (
           <div style={S.mediaSection}>
             <div style={S.sectionTitle}>📷 画像</div>
-            <div style={S.mediaGrid}>{activeItem.images.map((img,i) => <img key={i} src={img.url} style={S.thumb} />)}</div>
+            <div style={S.mediaGrid}>{activeItem.images.map((img,i) => <MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}</div>
           </div>
         )}
         <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
@@ -3223,7 +3653,7 @@ function MembersPage({ fcChannels, setFcChannels, fcEntries, setFcEntries, toggl
           <div style={S.mediaSection}>
             <div style={S.sectionTitle}>📷 画像</div>
             <div style={S.mediaGrid}>
-              {activeEntry.images.map((img, i) => <img key={i} src={img.url} style={S.thumb} />)}
+              {activeEntry.images.map((img, i) => <MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}
             </div>
           </div>
         )}
@@ -3601,6 +4031,49 @@ const CD = {
   cancelBtn:  { background:"#f5f2eb", border:"1px solid #ddd8cc", color:"#555", borderRadius:8, padding:"10px 22px", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" },
   confirmBtn: { background:"#b71c1c", border:"none", color:"#fff", borderRadius:8, padding:"10px 22px", fontSize:13, fontWeight:800, cursor:"pointer", fontFamily:"inherit", boxShadow:"0 2px 8px rgba(183,28,28,.3)" },
 };
+
+// ── MediaItem: 画像/動画の表示＋ダウンロードボタン ────────────
+function MediaItem({ src, type, name, index }) {
+  const download = () => {
+    try {
+      // base64 → Blob → ObjectURL 経由でダウンロード
+      const [header, data] = src.split(",");
+      const mime = header.match(/:(.*?);/)[1];
+      const binary = atob(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mime });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = name || (type === "video" ? `video_${index+1}.mp4` : `image_${index+1}.jpg`);
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+    } catch(e) {
+      // フォールバック：新タブで開く
+      window.open(src, "_blank");
+    }
+  };
+  return (
+    <div style={{ position:"relative", display:"inline-block" }}>
+      {type === "video"
+        ? <video src={src} controls loop playsInline style={S.thumb} />
+        : <img src={src} alt={name||""} style={S.thumb} />
+      }
+      <button
+        style={{
+          position:"absolute", bottom:4, right:4,
+          background:"rgba(0,0,0,.6)", border:"none", borderRadius:6,
+          color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer",
+          padding:"4px 8px", lineHeight:1.4, display:"flex", alignItems:"center", gap:3,
+        }}
+        onClick={download}
+        title="保存する"
+      >⬇ 保存</button>
+    </div>
+  );
+}
 
 // ── FavsView: お気に入り一覧共通コンポーネント ───────────────
 function FavsView({ items, emptyLabel, renderCard }) {
