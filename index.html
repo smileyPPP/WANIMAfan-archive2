@@ -524,51 +524,52 @@ function SnsPage({ snsPosts, setSnsPosts, toggleFav, isFav }) {
           {/* グリッド or ストーリーアーカイブ */}
           {(subView === "grid" || subView === "story_cal") && (
             <div>
-              {/* ストーリーハイライト（月ごと）＋アーカイブ切り替え */}
+              {/* ストーリーハイライト＋アーカイブボタン */}
               {storyMonths.length > 0 && (
                 <div style={IS.highlightSection}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: subView==="story_cal" ? 0 : 10 }}>
                     <div style={IS.highlightLabel}>ストーリー</div>
                     <button
                       style={{ ...S.tabBtn, fontSize:11, padding:"4px 10px", ...(subView==="story_cal"?S.tabBtnActive:{}) }}
                       onClick={() => setSubView(v => v==="story_cal"?"grid":"story_cal")}>
-                      📂 アーカイブ
+                      {subView==="story_cal" ? "✕ 閉じる" : "📂 アーカイブ"}
                     </button>
                   </div>
-                  <div style={IS.highlightRow}>
-                    {storyMonths.map(ym => {
-                      const acct = INSTA_ACCOUNTS.find(a => a.id === instaAcct);
-                      const monthStories = storyByMonth[ym];
-                      const thumb = monthStories.find(s => s.images.length > 0 || s.videos.length > 0);
-                      return (
-                        <div key={ym} style={IS.highlightItem}
-                          onClick={() => setStoryViewer({ stories:monthStories, index:0 })}>
-                          <div style={{ ...IS.highlightRing, borderColor:acct.color }}>
-                            {thumb?.images.length > 0
-                              ? <img src={thumb.images[0].url} alt="" style={IS.highlightThumb} />
-                              : thumb?.videos.length > 0
-                                ? <video src={thumb.videos[0].url} style={IS.highlightThumb} muted playsInline />
-                                : <div style={{ ...IS.highlightThumb, background:acct.color+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📖</div>
-                            }
+                  {/* アーカイブ表示中は〇アイコン行を非表示 */}
+                  {subView !== "story_cal" && (
+                    <div style={IS.highlightRow}>
+                      {storyMonths.map(ym => {
+                        const acct = INSTA_ACCOUNTS.find(a => a.id === instaAcct);
+                        const monthStories = storyByMonth[ym];
+                        const thumb = monthStories.find(s => s.images.length > 0 || s.videos.length > 0);
+                        return (
+                          <div key={ym} style={IS.highlightItem}
+                            onClick={() => setStoryViewer({ stories:monthStories, index:0 })}>
+                            <div style={{ ...IS.highlightRing, borderColor:acct.color }}>
+                              {thumb?.images.length > 0
+                                ? <img src={thumb.images[0].url} alt="" style={IS.highlightThumb} />
+                                : thumb?.videos.length > 0
+                                  ? <video src={thumb.videos[0].url} style={IS.highlightThumb} muted playsInline />
+                                  : <div style={{ ...IS.highlightThumb, background:acct.color+"22", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>📖</div>
+                              }
+                            </div>
+                            <div style={IS.highlightDate}>{fmtMonth(ym)}</div>
+                            <div style={{ fontSize:9, color:"#bbb" }}>{monthStories.length}件</div>
                           </div>
-                          <div style={IS.highlightDate}>{fmtMonth(ym)}</div>
-                          <div style={{ fontSize:9, color:"#bbb" }}>{monthStories.length}件</div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* ストーリーアーカイブ（カレンダー形式） */}
+              {/* ストーリーアーカイブ（カレンダー形式）- フル幅で表示 */}
               {subView === "story_cal" && (
-                <div style={{ marginBottom:16 }}>
-                  <SnsCalendar
-                    posts={storyPosts}
-                    onSelect={openDetail}
-                    onStoryOpen={(stories, idx) => setStoryViewer({ stories, index: idx })}
-                  />
-                </div>
+                <SnsCalendar
+                  posts={storyPosts}
+                  onSelect={openDetail}
+                  onStoryOpen={(stories, idx) => setStoryViewer({ stories, index: idx })}
+                />
               )}
 
               {/* 投稿グリッド（月ごと）- アーカイブ表示中は非表示 */}
@@ -672,12 +673,40 @@ function InstaGrid({ posts, onSelect, isFav, onToggleFav }) {
 
 // ── ストーリービューアー ──────────────────────────────────────
 function StoryViewer({ stories, initialIndex, onClose, onSelect }) {
-  const [idx, setIdx] = useState(initialIndex);
-  const story = stories[idx];
-  const acct = INSTA_ACCOUNTS.find(a => a.id === story.category) || INSTA_ACCOUNTS[0];
+  const [storyIdx, setStoryIdx] = useState(initialIndex); // どのストーリー
+  const [pageIdx,  setPageIdx]  = useState(0);            // そのストーリー内のページ
 
-  const prev = () => setIdx(v => Math.max(0, v-1));
-  const next = () => { if (idx < stories.length-1) setIdx(v => v+1); else onClose(); };
+  const story = stories[storyIdx];
+  const acct  = INSTA_ACCOUNTS.find(a => a.id === story.category) || INSTA_ACCOUNTS[0];
+
+  // ストーリー内のメディアリスト（画像→動画の順）
+  const pages = [
+    ...story.images.map(img => ({ type:"image", url:img.url, name:img.name })),
+    ...story.videos.map(vid => ({ type:"video", url:vid.url, name:vid.name })),
+  ];
+  const currentPage = pages[pageIdx] || null;
+  const totalPages  = pages.length;
+
+  // ストーリー切り替え時にページをリセット
+  const goStory = (newIdx) => { setStoryIdx(newIdx); setPageIdx(0); };
+
+  const prev = () => {
+    if (pageIdx > 0) {
+      setPageIdx(v => v - 1);               // ページ内を戻る
+    } else if (storyIdx > 0) {
+      goStory(storyIdx - 1);                 // 前のストーリーへ
+    }
+  };
+
+  const next = () => {
+    if (pageIdx < totalPages - 1) {
+      setPageIdx(v => v + 1);               // ページ内を進む
+    } else if (storyIdx < stories.length - 1) {
+      goStory(storyIdx + 1);                 // 次のストーリーへ
+    } else {
+      onClose();                             // 全部終わったら閉じる
+    }
+  };
 
   // タッチスワイプ
   const touchStart = useRef(null);
@@ -692,48 +721,65 @@ function StoryViewer({ stories, initialIndex, onClose, onSelect }) {
 
   return (
     <div style={IS.viewerOverlay} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      {/* 進行バー */}
+
+      {/* ── 進行バー：ストーリー単位 ── */}
       <div style={IS.progressRow}>
-        {stories.map((_,i) => (
-          <div key={i} style={{ ...IS.progressBar, background: i<=idx ? "#fff" : "rgba(255,255,255,.4)" }} />
-        ))}
+        {stories.map((s, i) => {
+          const sPages = s.images.length + s.videos.length || 1;
+          return (
+            <div key={i} style={{ flex:1, display:"flex", gap:2 }}>
+              {Array.from({ length: sPages }).map((_, pi) => {
+                const filled = i < storyIdx || (i === storyIdx && pi <= pageIdx);
+                return (
+                  <div key={pi} style={{ ...IS.progressBar, flex:1, background: filled ? "#fff" : "rgba(255,255,255,.35)" }} />
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
 
-      {/* ヘッダー */}
+      {/* ── ヘッダー ── */}
       <div style={IS.viewerHeader}>
         <div style={{ ...IS.acctAvatar, background:acct.color, width:32, height:32, fontSize:14 }}>{acct.avatar}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{acct.label}</div>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,.6)" }}>{story.date}</div>
+          <div style={{ fontSize:11, color:"rgba(255,255,255,.6)" }}>
+            {story.date}
+            {totalPages > 1 && <span style={{ marginLeft:6, opacity:.7 }}>{pageIdx+1} / {totalPages}</span>}
+          </div>
         </div>
         <button style={IS.viewerClose} onClick={onClose}>✕</button>
       </div>
 
-      {/* コンテンツ */}
+      {/* ── コンテンツ ── */}
       <div style={IS.viewerContent}>
-        {story.videos.length > 0
-          ? <video
-              key={story.id}
-              src={story.videos[0].url}
-              controls
-              loop
-              playsInline
-              autoPlay
-              style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", display:"block" }}
-            />
-          : story.images.length > 0
-            ? <img src={story.images[0].url} alt="" style={IS.viewerImg} />
-            : <div style={IS.viewerNoImg}>
-                <span style={{ fontSize:48 }}>📖</span>
-                <div style={{ color:"rgba(255,255,255,.7)", fontSize:14, marginTop:12, textAlign:"center", padding:"0 24px", lineHeight:1.6 }}>
-                  {story.memo}
-                </div>
-              </div>
-        }
+        {currentPage ? (
+          currentPage.type === "video"
+            ? <video
+                key={`${storyIdx}-${pageIdx}`}
+                src={currentPage.url}
+                controls loop playsInline autoPlay
+                style={{ maxWidth:"100%", maxHeight:"100%", objectFit:"contain", display:"block" }}
+              />
+            : <img
+                key={`${storyIdx}-${pageIdx}`}
+                src={currentPage.url}
+                alt=""
+                style={IS.viewerImg}
+              />
+        ) : (
+          <div style={IS.viewerNoImg}>
+            <span style={{ fontSize:48 }}>📖</span>
+            <div style={{ color:"rgba(255,255,255,.7)", fontSize:14, marginTop:12, textAlign:"center", padding:"0 24px", lineHeight:1.6 }}>
+              {story.memo}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* メモ・タグ（画像・動画ありの場合のみ下部に） */}
-      {(story.images.length > 0 || story.videos.length > 0) && story.memo && (
+      {/* ── メモ・タグ ── */}
+      {currentPage && story.memo && (
         <div style={IS.viewerCaption}>
           <div style={{ fontSize:13, color:"rgba(255,255,255,.9)", lineHeight:1.6 }}>{story.memo}</div>
           {extractHashtags(story.memo).length > 0 && (
@@ -833,7 +879,7 @@ const IS = {
   xAvatar:        { width:36, height:36, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontWeight:900, color:"#fff", flexShrink:0 },
   xCardMemo:      { fontSize:14, color:"#1a1a1a", lineHeight:1.7, marginBottom:8, whiteSpace:"pre-wrap" },
   monthHeader:    { fontSize:13, fontWeight:800, color:"#555", marginBottom:10, display:"flex", alignItems:"baseline" },
-  storyCalGrid:   { display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:"4px 0", marginBottom:16 },
+  storyCalGrid:   { display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:"6px 2px", marginBottom:16 },
 };
 
 // ── 旧SnsListView / SnsCard（XPostCard に統合済みのため最小化）──
@@ -1087,7 +1133,7 @@ function SnsCalendar({ posts, onSelect, onStoryOpen }) {
               {/* ストーリーがある日：丸いサムネ（Instagram風） */}
               {hasStory ? (
                 <div style={{
-                  width:38, height:38, borderRadius:"50%",
+                  width:46, height:46, borderRadius:"50%",
                   border:`2.5px solid ${acctColor}`,
                   padding:2, overflow:"hidden", position:"relative", flexShrink:0,
                   boxShadow: isT ? `0 0 0 2px #c8960a` : "none",
@@ -1102,7 +1148,7 @@ function SnsCalendar({ posts, onSelect, onStoryOpen }) {
               ) : (
                 /* ストーリーなし：通常の日付表示 */
                 <div style={{
-                  width:38, height:38, borderRadius:"50%",
+                  width:46, height:46, borderRadius:"50%",
                   background: isSel ? "#1e7e34" : isT ? "#fff8e1" : "transparent",
                   border: isT && !isSel ? "2px solid #c8960a" : "2px solid transparent",
                   display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0,
