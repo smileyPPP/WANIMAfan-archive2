@@ -212,7 +212,6 @@ function App() {
   const [fcEntries,  setFcEntries]  = useState(SAMPLE_FC_ENTRIES);
   const [favorites,  setFavorites]  = useState(new Set()); // Set of "type:id"
 
-  // ── Load from storage on mount ──
   useEffect(() => {
     const k = STORAGE_KEYS;
     const sp=storageGet(k.snsPosts), tr=storageGet(k.tours), sh=storageGet(k.shows);
@@ -247,6 +246,54 @@ function App() {
     return next;
   });
   const isFav = (type, id) => favorites.has(type+":"+id);
+  // ── エクスポート ──
+  const handleExport = () => {
+    const data = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      snsPosts, tours, shows, goodsTours, goodsItems,
+      mediaTypes, mediaItems, fcChannels, fcEntries,
+      favorites: [...favorites],
+    };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `wanima-archive-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); document.body.removeChild(a); }, 1000);
+  };
+
+  // ── インポート ──
+  const importRef = useRef();
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (data.snsPosts)   setSnsPosts(data.snsPosts);
+        if (data.tours)      setTours(data.tours);
+        if (data.shows)      setShows(data.shows);
+        if (data.goodsTours) setGoodsTours(data.goodsTours);
+        if (data.goodsItems) setGoodsItems(data.goodsItems);
+        if (data.mediaTypes) setMediaTypes(data.mediaTypes);
+        if (data.mediaItems) setMediaItems(data.mediaItems);
+        if (data.fcChannels) setFcChannels(data.fcChannels);
+        if (data.fcEntries)  setFcEntries(data.fcEntries);
+        if (data.favorites)  setFavorites(new Set(data.favorites));
+        alert("✅ インポート完了！データを読み込みました。");
+      } catch {
+        alert("❌ ファイルの読み込みに失敗しました。正しいバックアップファイルか確認してください。");
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  };
+
   const pageProps = { snsPosts, setSnsPosts, tours, setTours, shows, setShows, goodsTours, setGoodsTours, goodsItems, setGoodsItems, mediaTypes, setMediaTypes, mediaItems, setMediaItems, fcChannels, setFcChannels, fcEntries, setFcEntries, toggleFav, isFav, favorites };
 
   if (loading) return (
@@ -300,8 +347,14 @@ function App() {
             </div>
 
             <div style={S.sideFooter}>
-              <div style={S.sideFooterText}>WANIMA FAN ARCHIVE</div>
-              <div style={S.sideFooterSub}>Since 2025</div>
+              {/* エクスポート・インポートボタン */}
+              <input type="file" accept=".json" ref={importRef} style={{ display:"none" }} onChange={handleImport} />
+              <button style={EI.btn} onClick={handleExport}>📤 バックアップ</button>
+              <button style={{ ...EI.btn, marginTop:6 }} onClick={() => importRef.current.click()}>📥 復元</button>
+              <div style={{ borderTop:"1px solid #eee", marginTop:12, paddingTop:10 }}>
+                <div style={S.sideFooterText}>WANIMA FAN ARCHIVE</div>
+                <div style={S.sideFooterSub}>Since 2025</div>
+              </div>
             </div>
           </div>
         </aside>
@@ -4154,6 +4207,10 @@ function today() { return new Date().toISOString().slice(0,10); }
 const loadingBarStyle = {
   width: 160, height: 3, background: "#ddd8cc", borderRadius: 2, overflow: "hidden",
   position: "relative", isolation: "isolate",
+};
+
+const EI = {
+  btn: { width:"100%", background:"#f0ede6", border:"1px solid #ddd8cc", borderRadius:8, padding:"8px 12px", fontSize:12, fontWeight:700, color:"#555", cursor:"pointer", fontFamily:"inherit", textAlign:"left" },
 };
 
 const S = {
