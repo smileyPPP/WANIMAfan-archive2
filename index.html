@@ -106,8 +106,8 @@ const SAMPLE_TOURS = [
   },
 ];
 const SAMPLE_SHOWS = [
-  { id: 1, tourId: 1, date: "2025-05-31", venue: "大阪城ホール", place: "大阪", attended: true,  setlist: "Remember / Charm / THANK YOU / Dear... / Gotta Go", seat: "アリーナA-12", ticketPrice: "¥7,700", memo: "初の大阪城ホール！最高すぎた #WANIMA #大阪城ホール #ライブ", images: [], videos: [] },
-  { id: 2, tourId: 1, date: "2025-06-07", venue: "日本武道館",   place: "東京", attended: false, setlist: "", seat: "", ticketPrice: "", memo: "武道館2days！ #WANIMA #武道館", images: [], videos: [] },
+  { id: 1, tourId: 1, date: "2025-05-31", venue: "大阪城ホール", place: "大阪", attended: true,  setlist: "Remember / Charm / THANK YOU / Dear... / Gotta Go", seat: "アリーナA-12", ticketPrice: "¥7,700", seatPhotos: [], memo: "初の大阪城ホール！最高すぎた #WANIMA #大阪城ホール #ライブ", images: [], videos: [] },
+  { id: 2, tourId: 1, date: "2025-06-07", venue: "日本武道館",   place: "東京", attended: false, setlist: "", seat: "", ticketPrice: "", seatPhotos: [], memo: "武道館2days！ #WANIMA #武道館", images: [], videos: [] },
 ];
 
 // goodsTours: { id, title, keyvisual, createdAt }
@@ -1278,10 +1278,11 @@ function LivePage({ tours, setTours, shows, setShows, toggleFav, isFav, goodsIte
   // ── Show form state ──
   const [showFormData, setShowFormData] = useState({
     date:today(), venue:"", place:"", attended:true,
-    setlist:"", seat:"", ticketPrice:"", memo:"", images:[], videos:[],
+    setlist:"", seat:"", ticketPrice:"", memo:"", seatPhotos:[], images:[], videos:[],
   });
   const showImgRef = useRef();
   const showVidRef = useRef();
+  const seatPhotoRef = useRef();
 
   // ── Handlers: Tour ──
   const addTour = () => {
@@ -1743,7 +1744,23 @@ function LivePage({ tours, setTours, shows, setShows, toggleFav, isFav, goodsIte
             )}
           </div>
 
-          <FileUploadRow label="画像" accept="image/*" inputRef={showImgRef} files={showFormData.images}
+          <div style={S.fieldGroup}>
+            <label style={S.fieldLabel}>🪑 座席からの写真 <span style={{opacity:.5,fontSize:11}}>（チケットアーカイブのサムネになります）</span></label>
+            <input type="file" accept="image/*" multiple ref={seatPhotoRef} style={{ display:"none" }}
+              onChange={(e) => handleShowFile(e,"seatPhotos")} />
+            <button style={S.uploadBtn} onClick={() => seatPhotoRef.current.click()}>📷 写真を選択</button>
+            {showFormData.seatPhotos?.length > 0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                {showFormData.seatPhotos.map((img, i) => (
+                  <div key={i} style={{ position:"relative", width:80, height:60 }}>
+                    <img src={img.url} alt="" style={{ width:80, height:60, objectFit:"cover", borderRadius:5, border:"1px solid #ddd8cc", display:"block" }} />
+                    <button style={S.removeBtn} onClick={() => removeShowFile("seatPhotos", i)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <FileUploadRow label="その他の画像" accept="image/*" inputRef={showImgRef} files={showFormData.images}
             onUpload={(e) => handleShowFile(e,"images")} onRemove={(i) => removeShowFile("images",i)} icon="📷" isImage />
           <FileUploadRow label="動画" accept="video/*" inputRef={showVidRef} files={showFormData.videos}
             onUpload={(e) => handleShowFile(e,"videos")} onRemove={(i) => removeShowFile("videos",i)} icon="🎬" />
@@ -1874,6 +1891,12 @@ function LivePage({ tours, setTours, shows, setShows, toggleFav, isFav, goodsIte
           <div style={S.mediaSection}>
             <div style={S.sectionTitle}>📷 画像</div>
             <div style={S.mediaGrid}>{activeShow.images.map((img,i)=><MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}</div>
+          </div>
+        )}
+        {activeShow.seatPhotos?.length > 0 && (
+          <div style={S.mediaSection}>
+            <div style={S.sectionTitle}>🪑 座席からの写真</div>
+            <div style={S.mediaGrid}>{activeShow.seatPhotos.map((img,i)=><MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}</div>
           </div>
         )}
         {activeShow.videos?.length>0 && (
@@ -2034,14 +2057,16 @@ function TicketArchive({ tours, shows }) {
       </div>
       <div style={{ display:"flex", flexDirection:"column", gap:24 }}>
         {attended.map((show) => {
-          const tour = tours.find(t => t.id === show.tourId);
-          const kv   = tour?.keyvisuals?.[0];
+          const tour      = tours.find(t => t.id === show.tourId);
+          const seatPhoto = show.seatPhotos?.[0];  // 座席写真を優先サムネに
+          const kv        = tour?.keyvisuals?.[0];
+          const thumbSrc  = seatPhoto?.url || kv?.url || null;
           return (
             <div key={show.id} style={TC.ticket}>
-              {/* キービジュアル */}
+              {/* サムネ（座席写真 → なければKV → なければプレースホルダー） */}
               <div style={TC.kvSection}>
-                {kv
-                  ? <img src={kv.url} alt="" style={TC.kvImg} />
+                {thumbSrc
+                  ? <img src={thumbSrc} alt="" style={TC.kvImg} />
                   : <div style={TC.kvPlaceholder}>
                       <span style={{ fontSize:32, opacity:.4 }}>🎸</span>
                       <div style={{ fontSize:14, color:"rgba(255,255,255,.6)", marginTop:8, fontWeight:700 }}>{tour?.title || "WANIMA"}</div>
@@ -2053,7 +2078,7 @@ function TicketArchive({ tours, shows }) {
                 </div>
               </div>
 
-              {/* 破線（ミシン目風） */}
+              {/* ミシン目 */}
               <div style={TC.dash}>
                 <div style={TC.dashCircleL} />
                 <div style={TC.dashCircleR} />
@@ -2067,13 +2092,9 @@ function TicketArchive({ tours, shows }) {
                     <div style={{ fontSize:20, fontWeight:900, color:"#1a1a1a", lineHeight:1.2 }}>{show.venue}</div>
                     {show.place && <div style={{ fontSize:12, color:"#888", marginTop:3 }}>📍 {show.place}</div>}
                   </div>
-                  {/* スタンプ画像 */}
-                  <div style={{ position:"relative", width:80, height:80, flexShrink:0, marginLeft:8 }}>
+                  {/* スタンプ（斜め・日付なし） */}
+                  <div style={{ width:80, height:80, flexShrink:0, marginLeft:8, transform:"rotate(-12deg)" }}>
                     <img src={STAMP_IMG} alt="stamp" style={{ width:"100%", height:"100%", objectFit:"contain", opacity:.85 }} />
-                    {/* 日付オーバーレイ */}
-                    <div style={{ position:"absolute", bottom:8, left:0, right:0, textAlign:"center", fontSize:9, fontWeight:900, color:"#b71c1c", letterSpacing:"0.04em" }}>
-                      {show.date.slice(0,4)}.{show.date.slice(5,7)}.{show.date.slice(8)}
-                    </div>
                   </div>
                 </div>
 
@@ -2081,26 +2102,6 @@ function TicketArchive({ tours, shows }) {
                   <div style={TC.seatRow}>
                     <span style={TC.seatLabel}>座席</span>
                     <span style={TC.seatValue}>{show.seat}</span>
-                  </div>
-                )}
-                {show.ticketPrice && (
-                  <div style={{ ...TC.seatRow, borderTop:"none", paddingTop:4 }}>
-                    <span style={TC.seatLabel}>料金</span>
-                    <span style={{ ...TC.seatValue, color:"#1e7e34" }}>{show.ticketPrice}</span>
-                  </div>
-                )}
-
-                {show.images?.length > 0 && (
-                  <div style={{ display:"flex", gap:6, marginTop:12 }}>
-                    {show.images.slice(0,3).map((img,i) => (
-                      <img key={i} src={img.url} alt="" style={{ flex:1, height:60, objectFit:"cover", borderRadius:6 }} />
-                    ))}
-                  </div>
-                )}
-
-                {show.memo && (
-                  <div style={{ fontSize:12, color:"#666", marginTop:10, lineHeight:1.6, borderTop:"1px dashed #e0dbd0", paddingTop:8 }}>
-                    {show.memo.slice(0,80)}{show.memo.length>80?"…":""}
                   </div>
                 )}
               </div>
