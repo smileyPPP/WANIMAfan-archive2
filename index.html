@@ -1,27 +1,3 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="WANIMA ARCHIVE" />
-  <title>WANIMA ARCHIVE</title>
-  <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body { margin: 0; background: #f5f2eb; overscroll-behavior: none; }
-    input, textarea, select, button { font-family: inherit; }
-    #root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
-    const { useState, useRef, useEffect } = React;
-
 // FC content: channels (親) + entries (子)
 // channels: { id, label, icon, color, description }
 // entries:  { id, channelId, title, date, episode, memo, url, images[], groupType }
@@ -37,7 +13,7 @@ const SAMPLE_FC_ENTRIES = [
   { id: 2, channelId: "radio2",     title: "#42 新曲について語る回", date: "2025-05-15", episode: "42", memo: "新曲の制作秘話がたっぷり！ #ラジオ2 #新曲", url: "", images: [] },
 ];
 
-
+import { useState, useRef, useEffect } from "react";
 
 // ── File → base64 helper ─────────────────────────────────────
 function readFileAsDataURL(file) {
@@ -64,6 +40,7 @@ const NAV_PAGES = [
   { id: "live",    label: "ライブ",      icon: "🎸" },
   { id: "media",   label: "メディア出演", icon: "📺" },
   { id: "goods",   label: "グッズ",      icon: "🛍" },
+  { id: "ecology", label: "WANIMAの生態", icon: "🦎" },
 ];
 
 const SNS_CATEGORIES = [
@@ -186,16 +163,20 @@ const STORAGE_KEYS = {
   fcChannels: "wanima:fcChannels",
   fcEntries:  "wanima:fcEntries",
   favorites:  "wanima:favorites",
+  ecoItems:   "wanima:ecoItems",
 };
 
-function storageGet(key) {
-  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+async function storageGet(key) {
+  try {
+    const result = await window.storage.get(key);
+    return result ? JSON.parse(result.value) : null;
+  } catch { return null; }
 }
-function storageSet(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+async function storageSet(key, value) {
+  try { await window.storage.set(key, JSON.stringify(value)); } catch {}
 }
 
-function App() {
+export default function App() {
   const [page, setPage]           = useState("sns");
   const [sidebarOpen, setSidebar] = useState(true);
   const [loading, setLoading]     = useState(true);
@@ -211,20 +192,35 @@ function App() {
   const [fcChannels, setFcChannels] = useState(SAMPLE_FC_CHANNELS);
   const [fcEntries,  setFcEntries]  = useState(SAMPLE_FC_ENTRIES);
   const [favorites,  setFavorites]  = useState(new Set()); // Set of "type:id"
+  const [ecoItems,   setEcoItems]   = useState([]);
 
+  // ── Load from storage on mount ──
   useEffect(() => {
-    const k = STORAGE_KEYS;
-    const sp=storageGet(k.snsPosts), tr=storageGet(k.tours), sh=storageGet(k.shows);
-    const gt=storageGet(k.goodsTours), gi=storageGet(k.goodsItems);
-    const mt=storageGet(k.mediaTypes), mi=storageGet(k.mediaItems);
-    const fc=storageGet(k.fcChannels), fe=storageGet(k.fcEntries);
-    const fv=storageGet(k.favorites);
-    if(sp)setSnsPosts(sp); if(tr)setTours(tr); if(sh)setShows(sh);
-    if(gt)setGoodsTours(gt); if(gi)setGoodsItems(gi);
-    if(mt)setMediaTypes(mt); if(mi)setMediaItems(mi);
-    if(fc)setFcChannels(fc); if(fe)setFcEntries(fe);
-    if(fv)setFavorites(new Set(fv));
-    setLoading(false);
+    (async () => {
+      const [sp, tr, sh, gt, gi, mt, mi, fc, fe, fv] = await Promise.all([
+        storageGet(STORAGE_KEYS.snsPosts),
+        storageGet(STORAGE_KEYS.tours),
+        storageGet(STORAGE_KEYS.shows),
+        storageGet(STORAGE_KEYS.goodsTours),
+        storageGet(STORAGE_KEYS.goodsItems),
+        storageGet(STORAGE_KEYS.mediaTypes),
+        storageGet(STORAGE_KEYS.mediaItems),
+        storageGet(STORAGE_KEYS.fcChannels),
+        storageGet(STORAGE_KEYS.fcEntries),
+        storageGet(STORAGE_KEYS.favorites),
+      ]);
+      if (sp) setSnsPosts(sp);
+      if (tr) setTours(tr);
+      if (sh) setShows(sh);
+      if (gt) setGoodsTours(gt);
+      if (gi) setGoodsItems(gi);
+      if (mt) setMediaTypes(mt);
+      if (mi) setMediaItems(mi);
+      if (fc) setFcChannels(fc);
+      if (fe) setFcEntries(fe);
+      if (fv) setFavorites(new Set(fv));
+      setLoading(false);
+    })();
   }, []);
 
   // ── Auto-save whenever data changes ──
@@ -238,6 +234,7 @@ function App() {
   useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.fcChannels,  fcChannels);  }, [fcChannels,  loading]);
   useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.fcEntries,   fcEntries);   }, [fcEntries,   loading]);
   useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.favorites,  [...favorites]); }, [favorites,  loading]);
+  useEffect(() => { if (!loading) storageSet(STORAGE_KEYS.ecoItems,   ecoItems);   }, [ecoItems,   loading]);
 
   const toggleFav = (type, id) => setFavorites(prev => {
     const next = new Set(prev);
@@ -294,7 +291,7 @@ function App() {
     reader.readAsText(file);
   };
 
-  const pageProps = { snsPosts, setSnsPosts, tours, setTours, shows, setShows, goodsTours, setGoodsTours, goodsItems, setGoodsItems, mediaTypes, setMediaTypes, mediaItems, setMediaItems, fcChannels, setFcChannels, fcEntries, setFcEntries, toggleFav, isFav, favorites };
+  const pageProps = { snsPosts, setSnsPosts, tours, setTours, shows, setShows, goodsTours, setGoodsTours, goodsItems, setGoodsItems, mediaTypes, setMediaTypes, mediaItems, setMediaItems, fcChannels, setFcChannels, fcEntries, setFcEntries, toggleFav, isFav, favorites, ecoItems, setEcoItems };
 
   if (loading) return (
     <div style={{ ...S.root, display:"flex", alignItems:"center", justifyContent:"center", flexDirection:"column", gap:16, background:"#f5f2eb" }}>
@@ -366,6 +363,7 @@ function App() {
           {page === "goods"   && <GoodsPage   goodsTours={goodsTours} setGoodsTours={setGoodsTours} goodsItems={goodsItems} setGoodsItems={setGoodsItems} toggleFav={toggleFav} isFav={isFav} />}
           {page === "media"   && <MediaPage   mediaTypes={mediaTypes} setMediaTypes={setMediaTypes} mediaItems={mediaItems} setMediaItems={setMediaItems} toggleFav={toggleFav} isFav={isFav} />}
           {page === "members" && <MembersPage fcChannels={fcChannels} setFcChannels={setFcChannels} fcEntries={fcEntries} setFcEntries={setFcEntries} toggleFav={toggleFav} isFav={isFav} />}
+          {page === "ecology" && <EcologyPage ecoItems={ecoItems} setEcoItems={setEcoItems} />}
         </main>
       </div>
     </div>
@@ -4421,7 +4419,527 @@ function today() { return new Date().toISOString().slice(0,10); }
 //  STYLES
 // ═══════════════════════════════════════════════════════════════
 
-const loadingBarStyle = {
+// ═══════════════════════════════════════════════════════════════
+//  ECOLOGY PAGE — WANIMAの生態
+// ═══════════════════════════════════════════════════════════════
+
+const ECO_CATEGORIES = [
+  { id: "episode",  label: "言動メモ",     icon: "💬", color: "#E1306C", desc: "目撃情報・エピソード" },
+  { id: "outfit",   label: "着用アイテム", icon: "👕", color: "#1e7e34", desc: "服・アクセサリーなど" },
+  { id: "spot",     label: "目撃スポット", icon: "📍", color: "#c8960a", desc: "行きつけのお店・場所" },
+  { id: "phrase",   label: "口癖",         icon: "🗣", color: "#7c3aed", desc: "よく言う言葉" },
+  { id: "met",      label: "会った記録",   icon: "🤝", color: "#0ea5e9", desc: "メンバーと会った記録" },
+];
+
+const ECO_MEMBERS = [
+  { id: "all",    label: "全員",   color: "#555" },
+  { id: "kenta",  label: "KENTA",  color: "#ff4e1a" },
+  { id: "fuji",   label: "FUJI",   color: "#c8960a" },
+  { id: "kouhei", label: "KOUHEI", color: "#1e7e34" },
+];
+
+function EcologyPage({ ecoItems, setEcoItems }) {
+  const [activeCategory, setActiveCategory] = useState(null); // null = top
+  const [activeItem,     setActiveItem]     = useState(null);
+  const [showForm,       setShowForm]       = useState(false);
+  const [searchQ,        setSearchQ]        = useState("");
+  const [filterMember,   setFilterMember]   = useState("all");
+  const [confirm,        dialog]            = useConfirm();
+  const imgRef = useRef();
+
+  const emptyForm = { title:"", member:"all", date:today(), memo:"", url:"", images:[] };
+  const [form, setForm] = useState(emptyForm);
+
+  const catItems = (catId) => ecoItems.filter(e => e.category === catId);
+
+  const filteredItems = activeCategory
+    ? catItems(activeCategory.id).filter(e => {
+        const mm = filterMember === "all" || e.member === filterMember;
+        const q  = searchQ.toLowerCase();
+        const mq = !q || e.title.toLowerCase().includes(q) || e.memo.toLowerCase().includes(q) ||
+          extractHashtags(e.memo).some(t => t.toLowerCase().includes(q));
+        return mm && mq;
+      }).sort((a,b) => b.date.localeCompare(a.date))
+    : [];
+
+  const allTags = activeCategory
+    ? [...new Set(catItems(activeCategory.id).flatMap(e => extractHashtags(e.memo)))]
+    : [];
+
+  const handleAdd = () => {
+    if (!form.title && !form.memo) return;
+    setEcoItems(p => [{ id:Date.now(), category:activeCategory.id, ...form }, ...p]);
+    setForm(emptyForm);
+    setShowForm(false);
+  };
+
+  const handleDelete = (id) => {
+    setEcoItems(p => p.filter(e => e.id !== id));
+    setActiveItem(null);
+  };
+
+  const handleFile = async (e) => {
+    const d = await filesToDataURLs(e.target.files);
+    setForm(p => ({ ...p, images:[...p.images, ...d] }));
+    e.target.value = "";
+  };
+
+  const removeFile = (i) => setForm(p => ({ ...p, images:p.images.filter((_,j)=>j!==i) }));
+
+  // ── 詳細表示中 ──
+  if (activeItem) {
+    const cat = ECO_CATEGORIES.find(c => c.id === activeItem.category);
+    const mem = ECO_MEMBERS.find(m => m.id === activeItem.member);
+    return (
+      <div>
+        {dialog}
+        <div style={LS.breadcrumb}>
+          <button style={LS.breadcrumbBtn} onClick={() => { setActiveItem(null); }}>
+            {cat?.icon} {cat?.label}
+          </button>
+          <span style={LS.breadcrumbSep}>›</span>
+          <span style={LS.breadcrumbCurrent}>{activeItem.title || activeItem.memo.slice(0,20)}</span>
+        </div>
+        <div style={S.detailCard}>
+          <div style={{ ...S.cardStripe, width:4, borderRadius:"12px 0 0 12px", background:cat?.color }} />
+          <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:10 }}>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
+              <span style={{ ...S.badge, background:cat?.color+"22", color:cat?.color, borderColor:cat?.color+"44" }}>{cat?.icon} {cat?.label}</span>
+              {activeItem.member !== "all" && (
+                <span style={{ ...S.badge, background:mem?.color+"22", color:mem?.color, borderColor:mem?.color+"44" }}>{mem?.label}</span>
+              )}
+            </div>
+            <span style={S.dateTxt}>{activeItem.date}</span>
+          </div>
+          {activeItem.title && <div style={{ fontSize:17, fontWeight:800, color:"#1a1a1a", marginBottom:10 }}>{activeItem.title}</div>}
+          {activeItem.memo && (
+            <div style={{ fontSize:14, lineHeight:1.8, color:"#333", whiteSpace:"pre-wrap", marginBottom:12 }}>{activeItem.memo}</div>
+          )}
+          {extractHashtags(activeItem.memo).length > 0 && (
+            <div style={{ ...S.tagWrap, marginBottom:12 }}>
+              {extractHashtags(activeItem.memo).map(t => <span key={t} style={S.tagPill}>{t}</span>)}
+            </div>
+          )}
+          {activeItem.url && (
+            <div style={S.detailUrlBox}>
+              <a href={activeItem.url} target="_blank" rel="noopener noreferrer"
+                style={{ fontSize:13, color:"#1565c0", textDecoration:"none", wordBreak:"break-all", display:"block", marginBottom:6 }}>
+                🔗 {activeItem.url}
+              </a>
+              <button style={S.copyBtn} onClick={() => navigator.clipboard.writeText(activeItem.url)}>📋 コピー</button>
+            </div>
+          )}
+          {activeItem.images?.length > 0 && (
+            <div style={S.mediaSection}>
+              <div style={S.sectionTitle}>📷 画像</div>
+              <div style={S.mediaGrid}>
+                {activeItem.images.map((img,i) => <MediaItem key={i} src={img.url} name={img.name} type="image" index={i}/>)}
+              </div>
+            </div>
+          )}
+          <div style={{ display:"flex", justifyContent:"flex-end", marginTop:20 }}>
+            <button style={S.dangerBtn} onClick={() => confirm("この記録を削除しますか？", () => handleDelete(activeItem.id))}>🗑 削除する</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── 会った記録 専用ビュー ──
+  if (activeCategory?.id === "met") {
+    const metItems = ecoItems.filter(e => e.category === "met").sort((a,b) => b.date.localeCompare(a.date));
+    const REAL_MEMBERS = ECO_MEMBERS.filter(m => m.id !== "all");
+
+    // メンバーごとの統計
+    const memberStats = REAL_MEMBERS.map(m => {
+      const items = metItems.filter(e => e.member === m.id);
+      const last  = items[0]?.date || null;
+      return { ...m, count:items.length, last, items };
+    });
+
+    return (
+      <div>
+        {dialog}
+        <div style={LS.breadcrumb}>
+          <button style={LS.breadcrumbBtn} onClick={() => { setActiveCategory(null); setShowForm(false); setActiveItem(null); }}>
+            🦎 WANIMAの生態
+          </button>
+          <span style={LS.breadcrumbSep}>›</span>
+          <span style={LS.breadcrumbCurrent}>🤝 会った記録</span>
+        </div>
+
+        {/* メンバーごとの統計カード */}
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+          {memberStats.map(m => (
+            <div key={m.id} style={{ background:"#fff", border:`2px solid ${m.color}33`, borderRadius:12, padding:"14px 10px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}>
+              <div style={{ fontSize:28, fontWeight:900, color:m.color, lineHeight:1 }}>{m.count}</div>
+              <div style={{ fontSize:11, fontWeight:700, color:m.color, marginTop:2 }}>{m.label}</div>
+              <div style={{ fontSize:10, color:"#aaa", marginTop:6, lineHeight:1.4 }}>
+                {m.last ? <>最後<br/>{m.last}</> : "未記録"}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 追加ボタン */}
+        <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:12 }}>
+          <button style={S.addBtn} onClick={() => setShowForm(v => !v)}>
+            {showForm ? "✕ キャンセル" : "＋ 追加"}
+          </button>
+        </div>
+
+        {/* 追加フォーム */}
+        {showForm && (
+          <div style={{ ...S.formCard, marginBottom:16 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:"#0ea5e9", letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #0ea5e933" }}>
+              🤝 会った記録を追加
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>メンバー *</label>
+              <div style={{ display:"flex", gap:8 }}>
+                {REAL_MEMBERS.map(m => (
+                  <button key={m.id}
+                    style={{ ...S.typeBtn, flex:1, ...(form.member===m.id ? { borderColor:m.color, background:m.color+"22", color:m.color } : {}) }}
+                    onClick={() => setForm(p => ({...p, member:m.id}))}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={S.formGrid2}>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>日付</label>
+                <input type="date" style={S.inputBase} value={form.date} onChange={e => setForm(p => ({...p, date:e.target.value}))} />
+              </div>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>場所 <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+                <input style={S.inputBase} placeholder="例：大阪城ホール前" value={form.title} onChange={e => setForm(p => ({...p, title:e.target.value}))} />
+              </div>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+              <textarea style={S.textarea} rows={3}
+                placeholder="どんな状況で会った？何を話した？など"
+                value={form.memo} onChange={e => setForm(p => ({...p, memo:e.target.value}))} />
+              {extractHashtags(form.memo).length > 0 && (
+                <div style={{ ...S.tagWrap, marginTop:6 }}>
+                  {extractHashtags(form.memo).map(t => <span key={t} style={S.tagPill}>{t}</span>)}
+                </div>
+              )}
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>🔗 URL <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+              <input type="url" style={S.inputBase} placeholder="https://..." value={form.url} onChange={e => setForm(p => ({...p, url:e.target.value}))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>📷 画像 <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+              <input type="file" accept="image/*" multiple ref={imgRef} style={{ display:"none" }} onChange={handleFile} />
+              <button style={S.uploadBtn} onClick={() => imgRef.current.click()}>📷 画像を選択</button>
+              {form.images.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                  {form.images.map((img,i) => (
+                    <div key={i} style={{ position:"relative", width:72, height:54 }}>
+                      <img src={img.url} alt="" style={{ width:72, height:54, objectFit:"cover", borderRadius:5, border:"1px solid #ddd8cc", display:"block" }} />
+                      <button style={S.removeBtn} onClick={() => removeFile(i)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button style={S.cancelBtn} onClick={() => setShowForm(false)}>キャンセル</button>
+              <button style={{ ...S.saveBtn, ...(form.member==="all"?S.saveBtnOff:{}) }}
+                onClick={() => {
+                  if (form.member === "all") return;
+                  setEcoItems(p => [{ id:Date.now(), category:"met", ...form }, ...p]);
+                  setForm(emptyForm);
+                  setShowForm(false);
+                }}>保存する ✓</button>
+            </div>
+          </div>
+        )}
+
+        {/* メンバーごとのエントリー一覧 */}
+        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+          {memberStats.filter(m => m.count > 0).map(m => (
+            <div key={m.id}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, paddingBottom:8, borderBottom:"1px solid #eee" }}>
+                <span style={{ ...S.badge, background:m.color+"22", color:m.color, borderColor:m.color+"44", fontSize:12 }}>{m.label}</span>
+                <span style={{ fontSize:12, color:"#888" }}>{m.count}回</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {m.items.map(item => (
+                  <div key={item.id}
+                    style={{ background:"#fff", border:"1px solid #ddd8cc", borderLeft:`3px solid ${m.color}`, borderRadius:10, padding:"12px 14px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}
+                    onClick={() => setActiveItem(item)}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:3, flexWrap:"wrap" }}>
+                          <span style={S.dateTxt}>{item.date}</span>
+                          {item.title && <span style={{ fontWeight:700, fontSize:13, color:"#1a1a1a" }}>{item.title}</span>}
+                        </div>
+                        {item.memo && (
+                          <div style={{ fontSize:13, color:"#444", lineHeight:1.5, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+                            {item.memo}
+                          </div>
+                        )}
+                        {item.images?.length > 0 && (
+                          <div style={{ display:"flex", gap:5, marginTop:6 }}>
+                            {item.images.slice(0,3).map((img,i) => (
+                              <img key={i} src={img.url} alt="" style={{ width:52, height:40, objectFit:"cover", borderRadius:4 }} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <button style={S.delBtn} onClick={e => { e.stopPropagation(); confirm("この記録を削除しますか？", () => handleDelete(item.id)); }}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {metItems.length === 0 && <EmptyState />}
+        </div>
+      </div>
+    );
+  }
+
+  // ── カテゴリ詳細（一覧）──
+  if (activeCategory) {
+    return (
+      <div>
+        {dialog}
+        <div style={LS.breadcrumb}>
+          <button style={LS.breadcrumbBtn} onClick={() => { setActiveCategory(null); setShowForm(false); setSearchQ(""); }}>
+            🦎 WANIMAの生態
+          </button>
+          <span style={LS.breadcrumbSep}>›</span>
+          <span style={LS.breadcrumbCurrent}>{activeCategory.icon} {activeCategory.label}</span>
+        </div>
+
+        {/* カテゴリヘッダー */}
+        <div style={{ background:"#fff", border:"1px solid #ddd8cc", borderRadius:12, padding:"14px 18px", marginBottom:16, display:"flex", alignItems:"center", gap:12, boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}>
+          <span style={{ fontSize:28 }}>{activeCategory.icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:17, fontWeight:800, color:"#1a1a1a" }}>{activeCategory.label}</div>
+            <div style={{ fontSize:12, color:"#888" }}>{activeCategory.desc} · {catItems(activeCategory.id).length}件</div>
+          </div>
+          <button style={S.addBtn} onClick={() => setShowForm(v => !v)}>
+            {showForm ? "✕" : "＋ 追加"}
+          </button>
+        </div>
+
+        {/* 追加フォーム */}
+        {showForm && (
+          <div style={{ ...S.formCard, marginBottom:16 }}>
+            <div style={{ fontSize:11, fontWeight:800, color:activeCategory.color, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:`1px solid ${activeCategory.color}33` }}>
+              {activeCategory.icon} {activeCategory.label}に追加
+            </div>
+            <div style={S.formGrid2}>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>{activeCategory.id === "phrase" ? "口癖・言葉" : "タイトル"} <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+                <input style={S.inputBase}
+                  placeholder={activeCategory.id==="outfit"?"アイテム名（例：白Tシャツ）": activeCategory.id==="spot"?"場所名（例：吉野家）": activeCategory.id==="phrase"?"言葉（例：よっしゃ！）":"タイトル"}
+                  value={form.title} onChange={e => setForm(p => ({...p, title:e.target.value}))} />
+              </div>
+              <div style={S.fieldGroup}>
+                <label style={S.fieldLabel}>日付</label>
+                <input type="date" style={S.inputBase} value={form.date} onChange={e => setForm(p => ({...p, date:e.target.value}))} />
+              </div>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>メンバー</label>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                {ECO_MEMBERS.map(m => (
+                  <button key={m.id}
+                    style={{ ...S.typeBtn, ...(form.member===m.id ? { borderColor:m.color, background:m.color+"22", color:m.color } : {}) }}
+                    onClick={() => setForm(p => ({...p, member:m.id}))}>{m.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>メモ <span style={{opacity:.5,fontSize:11}}>#タグも使えます</span></label>
+              <textarea style={S.textarea} rows={3}
+                placeholder={activeCategory.id==="episode"?"岐阜公演の帰りに吉野家に行ってた #目撃": activeCategory.id==="outfit"?"どんな感じで着てたか、ブランドなど": activeCategory.id==="spot"?"どこで？どんな状況で？": "どんな場面でよく言う？"}
+                value={form.memo} onChange={e => setForm(p => ({...p, memo:e.target.value}))} />
+              {extractHashtags(form.memo).length > 0 && (
+                <div style={{ ...S.tagWrap, marginTop:6 }}>
+                  {extractHashtags(form.memo).map(t => <span key={t} style={S.tagPill}>{t}</span>)}
+                </div>
+              )}
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>🔗 URL <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+              <input type="url" style={S.inputBase} placeholder="https://..." value={form.url} onChange={e => setForm(p => ({...p, url:e.target.value}))} />
+            </div>
+            <div style={S.fieldGroup}>
+              <label style={S.fieldLabel}>📷 画像 <span style={{opacity:.5,fontSize:11}}>（任意）</span></label>
+              <input type="file" accept="image/*" multiple ref={imgRef} style={{ display:"none" }} onChange={handleFile} />
+              <button style={S.uploadBtn} onClick={() => imgRef.current.click()}>📷 画像を選択</button>
+              {form.images.length > 0 && (
+                <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:8 }}>
+                  {form.images.map((img,i) => (
+                    <div key={i} style={{ position:"relative", width:72, height:54 }}>
+                      <img src={img.url} alt="" style={{ width:72, height:54, objectFit:"cover", borderRadius:5, border:"1px solid #ddd8cc", display:"block" }} />
+                      <button style={S.removeBtn} onClick={() => removeFile(i)}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button style={S.cancelBtn} onClick={() => setShowForm(false)}>キャンセル</button>
+              <button style={{ ...S.saveBtn, ...(!form.title&&!form.memo?S.saveBtnOff:{}) }} onClick={handleAdd}>保存する ✓</button>
+            </div>
+          </div>
+        )}
+
+        {/* 検索・メンバーフィルター */}
+        <div style={{ ...S.searchBox, marginBottom:10 }}>
+          <span>🔍</span>
+          <input style={S.searchInput} placeholder="キーワード・#タグで検索..." value={searchQ}
+            onChange={e => setSearchQ(e.target.value)} />
+          {searchQ && <button style={S.clearBtn} onClick={() => setSearchQ("")}>✕</button>}
+        </div>
+        <div style={{ ...S.filterRow, marginBottom:12 }}>
+          {ECO_MEMBERS.map(m => (
+            <button key={m.id}
+              style={{ ...S.chip, ...(filterMember===m.id ? { borderColor:m.color, background:m.color+"22", color:m.color } : {}) }}
+              onClick={() => setFilterMember(m.id)}>{m.label}</button>
+          ))}
+        </div>
+        {allTags.length > 0 && (
+          <div style={{ ...S.tagRow, marginBottom:14 }}>
+            {allTags.slice(0,12).map(t => (
+              <button key={t} style={{ ...S.hashChip, ...(searchQ===t?S.hashChipActive:{}) }}
+                onClick={() => setSearchQ(searchQ===t?"":t)}>{t}</button>
+            ))}
+          </div>
+        )}
+
+        {/* アイテム一覧 */}
+        {filteredItems.length === 0 ? <EmptyState /> : (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {filteredItems.map(item => {
+              const mem = ECO_MEMBERS.find(m => m.id === item.member);
+              const tags = extractHashtags(item.memo);
+              return (
+                <div key={item.id}
+                  style={{ background:"#fff", border:"1px solid #ddd8cc", borderLeft:`3px solid ${activeCategory.color}`, borderRadius:10, padding:"12px 14px", cursor:"pointer", boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}
+                  onClick={() => setActiveItem(item)}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:4, flexWrap:"wrap" }}>
+                        {item.member !== "all" && (
+                          <span style={{ ...S.badge, background:mem?.color+"22", color:mem?.color, borderColor:mem?.color+"44", fontSize:10 }}>{mem?.label}</span>
+                        )}
+                        {item.title && <span style={{ fontWeight:700, fontSize:14, color:"#1a1a1a" }}>{item.title}</span>}
+                        <span style={S.dateTxt}>{item.date}</span>
+                      </div>
+                      {item.memo && (
+                        <div style={{ fontSize:13, color:"#444", lineHeight:1.55, display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical", overflow:"hidden" }}>
+                          {item.memo}
+                        </div>
+                      )}
+                      {tags.length > 0 && (
+                        <div style={{ ...S.tagWrap, marginTop:5 }}>
+                          {tags.slice(0,4).map(t => <span key={t} style={S.tagPill}>{t}</span>)}
+                        </div>
+                      )}
+                      {item.images?.length > 0 && (
+                        <div style={{ display:"flex", gap:5, marginTop:6 }}>
+                          {item.images.slice(0,3).map((img,i) => (
+                            <img key={i} src={img.url} alt="" style={{ width:52, height:40, objectFit:"cover", borderRadius:4 }} />
+                          ))}
+                          {item.images.length > 3 && <span style={{ fontSize:11, color:"#aaa", alignSelf:"center" }}>+{item.images.length-3}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <button style={S.delBtn} onClick={e => { e.stopPropagation(); confirm("この記録を削除しますか？", () => handleDelete(item.id)); }}>🗑</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── トップ（カテゴリ一覧）──
+  return (
+    <div>
+      {dialog}
+      <PageHeader icon="🦎" title="WANIMAの生態" subtitle="メンバーの生態・目撃情報を記録" />
+
+      {/* サマリー */}
+      <div style={S.statsBar}>
+        <div style={S.statItem}>
+          <span style={S.statLabel}>総記録数</span>
+          <span style={S.statCount}>{ecoItems.length}件</span>
+        </div>
+        {ECO_CATEGORIES.map(cat => {
+          const cnt = catItems(cat.id).length;
+          return cnt > 0 ? (
+            <div key={cat.id} style={S.statItem}>
+              <span style={{ ...S.statDot, background:cat.color }} />
+              <span style={S.statLabel}>{cat.label}</span>
+              <span style={S.statCount}>{cnt}</span>
+            </div>
+          ) : null;
+        })}
+      </div>
+
+      {/* カテゴリカード */}
+      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+        {ECO_CATEGORIES.map(cat => {
+          const items   = catItems(cat.id);
+          const recent  = items.slice(0,3);
+          return (
+            <div key={cat.id}
+              style={{ background:"#fff", border:"1px solid #ddd8cc", borderRadius:14, overflow:"hidden", cursor:"pointer", boxShadow:"0 1px 6px rgba(0,0,0,.05)", position:"relative" }}
+              onClick={() => { setActiveCategory(cat); setFilterMember("all"); setSearchQ(""); setShowForm(false); }}>
+              <div style={{ position:"absolute", top:0, left:0, width:4, height:"100%", background:cat.color, borderRadius:"14px 0 0 14px" }} />
+              <div style={{ padding:"14px 16px 14px 20px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                  <span style={{ fontSize:24 }}>{cat.icon}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:900, fontSize:16, color:"#1a1a1a" }}>{cat.label}</div>
+                    <div style={{ fontSize:11, color:"#888" }}>{cat.desc}</div>
+                  </div>
+                  <span style={{ ...S.badge, background:cat.color+"22", color:cat.color, borderColor:cat.color+"44" }}>
+                    {items.length}件
+                  </span>
+                </div>
+                {recent.length > 0 ? (
+                  <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                    {recent.map(item => {
+                      const mem = ECO_MEMBERS.find(m => m.id === item.member);
+                      return (
+                        <div key={item.id} style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                          {item.member !== "all" && <span style={{ fontSize:10, fontWeight:700, color:mem?.color, flexShrink:0 }}>{mem?.label}</span>}
+                          <span style={{ fontSize:12, color:"rgba(240,236,230,.35)", minWidth:80, flexShrink:0, color:"#aaa" }}>{item.date}</span>
+                          <span style={{ fontSize:13, color:"#333", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                            {item.title || item.memo.slice(0,30)}{!item.title&&item.memo.length>30?"…":""}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {items.length > 3 && <div style={{ fontSize:11, color:"#bbb" }}>他 {items.length-3} 件…</div>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:12, color:"#ccc" }}>まだ記録なし</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
   width: 160, height: 3, background: "#ddd8cc", borderRadius: 2, overflow: "hidden",
   position: "relative", isolation: "isolate",
 };
@@ -4565,10 +5083,3 @@ const S = {
   memberAvatar:{ width:90, height:90, borderRadius:16, border:"2px solid", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
   statCard:    { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, padding:"18px 16px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
 };
-
-
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
-  </script>
-</body>
-</html>
