@@ -215,19 +215,33 @@ function App() {
   const [favorites,  setFavorites]  = useState(new Set()); // Set of "type:id"
   const [ecoItems,   setEcoItems]   = useState([]);
 
+  // ── Load from storage on mount ──
   useEffect(() => {
-    const k = STORAGE_KEYS;
-    const sp=storageGet(k.snsPosts), tr=storageGet(k.tours), sh=storageGet(k.shows);
-    const gt=storageGet(k.goodsTours), gi=storageGet(k.goodsItems);
-    const mt=storageGet(k.mediaTypes), mi=storageGet(k.mediaItems);
-    const fc=storageGet(k.fcChannels), fe=storageGet(k.fcEntries);
-    const fv=storageGet(k.favorites), ei=storageGet(k.ecoItems);
-    if(sp)setSnsPosts(sp); if(tr)setTours(tr); if(sh)setShows(sh);
-    if(gt)setGoodsTours(gt); if(gi)setGoodsItems(gi);
-    if(mt)setMediaTypes(mt); if(mi)setMediaItems(mi);
-    if(fc)setFcChannels(fc); if(fe)setFcEntries(fe);
-    if(fv)setFavorites(new Set(fv)); if(ei)setEcoItems(ei);
-    setLoading(false);
+    (async () => {
+      const [sp, tr, sh, gt, gi, mt, mi, fc, fe, fv] = await Promise.all([
+        storageGet(STORAGE_KEYS.snsPosts),
+        storageGet(STORAGE_KEYS.tours),
+        storageGet(STORAGE_KEYS.shows),
+        storageGet(STORAGE_KEYS.goodsTours),
+        storageGet(STORAGE_KEYS.goodsItems),
+        storageGet(STORAGE_KEYS.mediaTypes),
+        storageGet(STORAGE_KEYS.mediaItems),
+        storageGet(STORAGE_KEYS.fcChannels),
+        storageGet(STORAGE_KEYS.fcEntries),
+        storageGet(STORAGE_KEYS.favorites),
+      ]);
+      if (sp) setSnsPosts(sp);
+      if (tr) setTours(tr);
+      if (sh) setShows(sh);
+      if (gt) setGoodsTours(gt);
+      if (gi) setGoodsItems(gi);
+      if (mt) setMediaTypes(mt);
+      if (mi) setMediaItems(mi);
+      if (fc) setFcChannels(fc);
+      if (fe) setFcEntries(fe);
+      if (fv) setFavorites(new Set(fv));
+      setLoading(false);
+    })();
   }, []);
 
   // ── Auto-save whenever data changes ──
@@ -4947,6 +4961,7 @@ function EcologyPage({ ecoItems, setEcoItems }) {
 }
 
 
+const loadingBarStyle = {
   width: 160, height: 3, background: "#ddd8cc", borderRadius: 2, overflow: "hidden",
   position: "relative", isolation: "isolate",
 };
