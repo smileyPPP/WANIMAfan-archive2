@@ -1,3 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="WANIMA ARCHIVE" />
+  <title>WANIMA ARCHIVE</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; background: #f5f2eb; overscroll-behavior: none; }
+    input, textarea, select, button { font-family: inherit; }
+    #root { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useRef, useEffect } = React;
+
 // FC content: channels (親) + entries (子)
 // channels: { id, label, icon, color, description }
 // entries:  { id, channelId, title, date, episode, memo, url, images[], groupType }
@@ -13,7 +37,7 @@ const SAMPLE_FC_ENTRIES = [
   { id: 2, channelId: "radio2",     title: "#42 新曲について語る回", date: "2025-05-15", episode: "42", memo: "新曲の制作秘話がたっぷり！ #ラジオ2 #新曲", url: "", images: [] },
 ];
 
-import { useState, useRef, useEffect } from "react";
+
 
 // ── File → base64 helper ─────────────────────────────────────
 function readFileAsDataURL(file) {
@@ -166,17 +190,14 @@ const STORAGE_KEYS = {
   ecoItems:   "wanima:ecoItems",
 };
 
-async function storageGet(key) {
-  try {
-    const result = await window.storage.get(key);
-    return result ? JSON.parse(result.value) : null;
-  } catch { return null; }
+function storageGet(key) {
+  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
 }
-async function storageSet(key, value) {
-  try { await window.storage.set(key, JSON.stringify(value)); } catch {}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
-export default function App() {
+function App() {
   const [page, setPage]           = useState("sns");
   const [sidebarOpen, setSidebar] = useState(true);
   const [loading, setLoading]     = useState(true);
@@ -194,33 +215,19 @@ export default function App() {
   const [favorites,  setFavorites]  = useState(new Set()); // Set of "type:id"
   const [ecoItems,   setEcoItems]   = useState([]);
 
-  // ── Load from storage on mount ──
   useEffect(() => {
-    (async () => {
-      const [sp, tr, sh, gt, gi, mt, mi, fc, fe, fv] = await Promise.all([
-        storageGet(STORAGE_KEYS.snsPosts),
-        storageGet(STORAGE_KEYS.tours),
-        storageGet(STORAGE_KEYS.shows),
-        storageGet(STORAGE_KEYS.goodsTours),
-        storageGet(STORAGE_KEYS.goodsItems),
-        storageGet(STORAGE_KEYS.mediaTypes),
-        storageGet(STORAGE_KEYS.mediaItems),
-        storageGet(STORAGE_KEYS.fcChannels),
-        storageGet(STORAGE_KEYS.fcEntries),
-        storageGet(STORAGE_KEYS.favorites),
-      ]);
-      if (sp) setSnsPosts(sp);
-      if (tr) setTours(tr);
-      if (sh) setShows(sh);
-      if (gt) setGoodsTours(gt);
-      if (gi) setGoodsItems(gi);
-      if (mt) setMediaTypes(mt);
-      if (mi) setMediaItems(mi);
-      if (fc) setFcChannels(fc);
-      if (fe) setFcEntries(fe);
-      if (fv) setFavorites(new Set(fv));
-      setLoading(false);
-    })();
+    const k = STORAGE_KEYS;
+    const sp=storageGet(k.snsPosts), tr=storageGet(k.tours), sh=storageGet(k.shows);
+    const gt=storageGet(k.goodsTours), gi=storageGet(k.goodsItems);
+    const mt=storageGet(k.mediaTypes), mi=storageGet(k.mediaItems);
+    const fc=storageGet(k.fcChannels), fe=storageGet(k.fcEntries);
+    const fv=storageGet(k.favorites), ei=storageGet(k.ecoItems);
+    if(sp)setSnsPosts(sp); if(tr)setTours(tr); if(sh)setShows(sh);
+    if(gt)setGoodsTours(gt); if(gi)setGoodsItems(gi);
+    if(mt)setMediaTypes(mt); if(mi)setMediaItems(mi);
+    if(fc)setFcChannels(fc); if(fe)setFcEntries(fe);
+    if(fv)setFavorites(new Set(fv)); if(ei)setEcoItems(ei);
+    setLoading(false);
   }, []);
 
   // ── Auto-save whenever data changes ──
@@ -5083,3 +5090,10 @@ const S = {
   memberAvatar:{ width:90, height:90, borderRadius:16, border:"2px solid", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 },
   statCard:    { background:"#fff", border:"1px solid #ddd8cc", borderRadius:10, padding:"18px 16px", textAlign:"center", boxShadow:"0 1px 4px rgba(0,0,0,.04)" },
 };
+
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
